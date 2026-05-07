@@ -1,0 +1,9 @@
+fastapi
+uvicorn
+anthropic
+pymupdf
+python-multipart
+pytrends
+requests
+httpx
+slowapi

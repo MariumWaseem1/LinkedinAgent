@@ -1,0 +1,1527 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>REV3 — LinkedIn Brand Optimizer</title>
+<link href="https://fonts.googleapis.com/css2?family=Caveat:wght@400;600;700;800&family=Space+Grotesk:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+<style>
+/* ── Reset & base ── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --black: #0A0A0A;
+  --yellow: #FFE500;
+  --yellow2: #FFD000;
+  --white: #FFFFFF;
+  --grey: #A0A0A0;
+  --card: #141414;
+  --border: #222222;
+  --error: #FF4444;
+  --success: #00FF88;
+}
+
+html { scroll-behavior: smooth; }
+
+body {
+  background-color: var(--black);
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.03'/%3E%3C/svg%3E");
+  color: var(--white);
+  font-family: 'Space Grotesk', sans-serif;
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+h1, h2, h3, h4 { font-family: 'Caveat', cursive; }
+
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: #111; }
+::-webkit-scrollbar-thumb { background: var(--yellow); border-radius: 3px; }
+
+::selection { background: var(--yellow); color: var(--black); }
+
+/* ── Utilities ── */
+.hidden { display: none !important; }
+.fade-in { animation: fadeUp 0.3s ease forwards; }
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(20px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+@keyframes pulse { 0%,100% { opacity:1; } 50% { opacity:0.5; } }
+@keyframes ringFill {
+  from { stroke-dashoffset: 314; }
+  to   { stroke-dashoffset: var(--target-offset); }
+}
+
+.yellow { color: var(--yellow); }
+.caveat { font-family: 'Caveat', cursive; }
+.grey { color: var(--grey); }
+
+/* ── Cards ── */
+.card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--yellow);
+  border-radius: 4px;
+  padding: 1.2rem 1.4rem;
+}
+.card-plain {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 1.2rem 1.4rem;
+}
+
+/* ── Sticky note ── */
+.sticky {
+  display: inline-block;
+  background: var(--yellow);
+  color: var(--black);
+  font-family: 'Caveat', cursive;
+  font-size: 1.1rem;
+  font-weight: 700;
+  padding: 0.3rem 0.8rem;
+  transform: rotate(-2deg);
+  margin-bottom: 1rem;
+}
+
+/* ── Buttons ── */
+.btn {
+  display: inline-block;
+  background: var(--yellow);
+  color: var(--black);
+  font-family: 'Caveat', cursive;
+  font-size: 1.2rem;
+  font-weight: 700;
+  padding: 0.75rem 2rem;
+  border: none;
+  cursor: pointer;
+  transition: transform 0.15s, box-shadow 0.15s;
+  border-radius: 3px;
+  text-align: center;
+}
+.btn:hover:not(:disabled) {
+  transform: scale(1.01) rotate(-0.5deg);
+  box-shadow: 4px 4px 0px var(--yellow2);
+}
+.btn:disabled {
+  background: #2a2a2a;
+  color: #555;
+  cursor: not-allowed;
+}
+.btn-outline {
+  background: transparent;
+  border: 2px solid var(--yellow);
+  color: var(--yellow);
+}
+.btn-outline:hover:not(:disabled) {
+  background: var(--yellow);
+  color: var(--black);
+}
+
+/* ── Divider ── */
+.divider {
+  border: none;
+  border-top: 1px dashed var(--yellow);
+  opacity: 0.4;
+  margin: 1.5rem 0;
+}
+
+/* ── Pill/chip ── */
+.chip {
+  display: inline-block;
+  background: var(--yellow);
+  color: var(--black);
+  font-family: 'Caveat', cursive;
+  font-size: 0.95rem;
+  font-weight: 700;
+  padding: 0.2rem 0.7rem;
+  border-radius: 3px;
+}
+.chip-dark {
+  background: #1a1a1a;
+  color: var(--yellow);
+  border: 1px solid var(--yellow);
+}
+.chip-red {
+  background: #2a0000;
+  color: #ff6666;
+  border: 1px solid #ff4444;
+}
+.chip-grey {
+  background: #1e1e1e;
+  color: var(--grey);
+  border: 1px solid var(--border);
+}
+.chip-success {
+  background: #001a0d;
+  color: var(--success);
+  border: 1px solid var(--success);
+}
+
+/* ── Source badge ── */
+.source-badge {
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: 0.7rem;
+  font-weight: 600;
+  padding: 0.1rem 0.5rem;
+  border-radius: 3px;
+  background: #1a1600;
+  color: var(--yellow);
+  border: 1px solid #3a3000;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+/* ── Logo ── */
+.logo {
+  font-family: 'Caveat', cursive;
+  font-size: 2rem;
+  font-weight: 800;
+  color: var(--yellow);
+  display: inline-block;
+  position: relative;
+}
+.logo::after {
+  content: '';
+  display: block;
+  height: 3px;
+  background: var(--yellow);
+  margin-top: -4px;
+}
+
+/* ─────────────────────────────────────────────
+   STEP 1 — UPLOAD
+───────────────────────────────────────────── */
+#step1 {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+.s1-nav {
+  padding: 1.5rem 2rem;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+.s1-hero {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 2rem 1rem 4rem;
+}
+.s1-hero h1 {
+  font-size: clamp(2.5rem, 7vw, 4.5rem);
+  line-height: 1.05;
+  color: var(--white);
+  margin-bottom: 0.5rem;
+}
+.s1-hero h2 {
+  font-size: clamp(1.6rem, 4vw, 2.8rem);
+  color: var(--grey);
+  margin-bottom: 1.5rem;
+}
+.s1-hero p {
+  font-size: 1.05rem;
+  color: var(--grey);
+  max-width: 500px;
+  line-height: 1.7;
+  margin-bottom: 2rem;
+}
+.feature-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  justify-content: center;
+  margin-bottom: 2rem;
+}
+.feature-pill {
+  background: var(--yellow);
+  color: var(--black);
+  font-family: 'Caveat', cursive;
+  font-size: 1.05rem;
+  font-weight: 700;
+  padding: 0.35rem 1rem;
+  border-radius: 3px;
+}
+.feature-pill:nth-child(1) { transform: rotate(-2deg); }
+.feature-pill:nth-child(2) { transform: rotate(1deg); }
+.feature-pill:nth-child(3) { transform: rotate(-1deg); }
+
+/* How-to collapsible */
+.how-to {
+  max-width: 500px;
+  width: 100%;
+  border: 2px dashed var(--yellow);
+  border-radius: 4px;
+  margin-bottom: 2rem;
+  overflow: hidden;
+  opacity: 0.8;
+}
+.how-to summary {
+  padding: 0.75rem 1rem;
+  cursor: pointer;
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: 0.95rem;
+  color: var(--yellow);
+  list-style: none;
+}
+.how-to summary::-webkit-details-marker { display: none; }
+.how-to-body { padding: 0.5rem 1rem 1rem; }
+.how-step {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  margin-bottom: 0.6rem;
+  font-size: 0.9rem;
+  color: var(--grey);
+  text-align: left;
+}
+.how-step-num {
+  min-width: 26px; height: 26px;
+  background: var(--yellow);
+  color: var(--black);
+  font-family: 'Caveat', cursive;
+  font-weight: 700;
+  font-size: 1rem;
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+}
+
+/* Upload zone */
+.upload-zone {
+  max-width: 500px;
+  width: 100%;
+  border: 2px dashed var(--yellow);
+  border-radius: 6px;
+  padding: 2.5rem 2rem;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.2s;
+  background: transparent;
+  position: relative;
+}
+.upload-zone:hover { background: var(--card); border-style: solid; }
+.upload-zone.drag-over {
+  border-style: solid;
+  box-shadow: 0 0 20px var(--yellow);
+  background: #1a1400;
+}
+.upload-zone input[type="file"] {
+  position: absolute; inset: 0; opacity: 0; cursor: pointer;
+}
+.upload-icon { font-size: 2.5rem; margin-bottom: 0.75rem; }
+.upload-zone p { color: var(--grey); font-size: 0.95rem; margin-top: 0.5rem; }
+.upload-zone strong { color: var(--yellow); }
+.upload-note {
+  margin-top: 1rem;
+  font-size: 0.8rem;
+  color: #555;
+}
+
+/* Spinner */
+.spinner {
+  display: inline-block;
+  width: 1.2rem; height: 1.2rem;
+  border: 2px solid #333;
+  border-top-color: var(--yellow);
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
+
+/* ─────────────────────────────────────────────
+   STEP 2 — PROFILE SNAPSHOT
+───────────────────────────────────────────── */
+#step2 {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 2rem 1.5rem 4rem;
+}
+
+/* Progress bar */
+.progress-bar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+  margin-bottom: 3rem;
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: 0.85rem;
+}
+.prog-step {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.3rem;
+  color: var(--grey);
+}
+.prog-step.active { color: var(--yellow); }
+.prog-step.done { color: var(--success); }
+.prog-circle {
+  width: 28px; height: 28px;
+  border: 2px solid currentColor;
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-family: 'Caveat', cursive;
+  font-size: 1rem;
+}
+.prog-line {
+  width: 80px; height: 1px;
+  border-top: 2px dashed var(--border);
+  margin-bottom: 1.3rem;
+}
+
+/* Two-col layout */
+.s2-grid {
+  display: grid;
+  grid-template-columns: 3fr 2fr;
+  gap: 2rem;
+  margin-bottom: 2.5rem;
+}
+@media(max-width:768px) { .s2-grid { grid-template-columns: 1fr; } }
+
+/* Score ring */
+.score-ring-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin: 1.5rem 0;
+}
+.score-ring-svg { transform: rotate(-90deg); }
+.score-ring-bg { fill: none; stroke: #222; stroke-width: 12; }
+.score-ring-fill {
+  fill: none;
+  stroke: var(--yellow);
+  stroke-width: 12;
+  stroke-linecap: round;
+  stroke-dasharray: 314;
+  stroke-dashoffset: 314;
+  transition: stroke-dashoffset 1.2s ease;
+}
+.score-ring-text {
+  font-family: 'Caveat', cursive;
+  font-size: 3rem;
+  fill: var(--white);
+  dominant-baseline: middle;
+  text-anchor: middle;
+}
+.score-label { font-size: 0.85rem; color: var(--grey); margin-top: 0.3rem; }
+.score-rating {
+  font-family: 'Caveat', cursive;
+  font-size: 1.3rem;
+  margin-top: 0.3rem;
+  color: var(--yellow);
+}
+
+/* Score breakdown bars */
+.breakdown-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 0.5rem;
+  font-size: 0.9rem;
+}
+.breakdown-label { min-width: 90px; color: var(--grey); }
+.breakdown-bar-wrap {
+  flex: 1;
+  height: 8px;
+  background: #1e1e1e;
+  border-radius: 4px;
+  overflow: hidden;
+}
+.breakdown-bar {
+  height: 100%;
+  border-radius: 4px;
+  transition: width 0.8s ease;
+}
+.bar-green { background: var(--success); }
+.bar-amber { background: var(--yellow); }
+.bar-red   { background: var(--error); }
+.breakdown-score { min-width: 32px; text-align: right; font-size: 0.8rem; color: var(--grey); }
+
+/* Right col chips */
+.chip-list { display: flex; flex-direction: column; gap: 0.4rem; margin-top: 0.5rem; }
+
+/* Audience grid */
+.audience-section { margin-top: 2.5rem; }
+.audience-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+  margin: 1.2rem 0 1.5rem;
+}
+@media(max-width:500px) { .audience-grid { grid-template-columns: 1fr; } }
+.audience-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 1.1rem;
+  cursor: pointer;
+  transition: all 0.18s;
+  position: relative;
+}
+.audience-card:hover { border-color: #444; background: #1a1a1a; }
+.audience-card.selected {
+  border: 2px solid var(--yellow);
+  background: #1A1A00;
+  box-shadow: 3px 3px 0px var(--yellow);
+}
+.audience-card.selected::after {
+  content: '✓';
+  position: absolute;
+  top: 0.5rem; right: 0.75rem;
+  color: var(--yellow);
+  font-family: 'Caveat', cursive;
+  font-size: 1.2rem;
+}
+.audience-icon { font-size: 1.8rem; margin-bottom: 0.4rem; }
+.audience-label { font-family: 'Caveat', cursive; font-size: 1.2rem; color: var(--white); }
+.audience-desc { font-size: 0.85rem; color: var(--grey); margin: 0.2rem 0 0.5rem; }
+.audience-why { font-size: 0.8rem; }
+.audience-why span:first-child { color: var(--yellow); }
+.audience-why span:last-child { color: var(--grey); }
+
+/* ─────────────────────────────────────────────
+   AGENT PROGRESS
+───────────────────────────────────────────── */
+#stepAgent {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem 1rem;
+  text-align: center;
+}
+.agent-title {
+  font-size: clamp(2rem, 5vw, 3rem);
+  color: var(--white);
+  margin-bottom: 0.5rem;
+}
+.agent-subtitle {
+  color: var(--grey);
+  font-size: 1rem;
+  margin-bottom: 2rem;
+}
+.agent-feed {
+  width: 100%;
+  max-width: 620px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 1.2rem 1.4rem;
+  text-align: left;
+  min-height: 200px;
+}
+.feed-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 0.9rem;
+  animation: fadeUp 0.25s ease;
+}
+.feed-item:last-child { border-bottom: none; }
+.feed-icon { min-width: 1.5rem; text-align: center; }
+.feed-msg { flex: 1; }
+.feed-msg.active { color: var(--yellow); animation: pulse 1.5s infinite; }
+.feed-msg.done { color: var(--white); }
+.feed-msg.pending { color: #444; }
+.agent-progress-bar {
+  width: 100%;
+  max-width: 620px;
+  height: 4px;
+  background: #1e1e1e;
+  border-radius: 2px;
+  margin-top: 1rem;
+  overflow: hidden;
+}
+.agent-progress-fill {
+  height: 100%;
+  background: var(--yellow);
+  border-radius: 2px;
+  transition: width 0.5s ease;
+  width: 0%;
+}
+.agent-hint {
+  margin-top: 1rem;
+  font-size: 0.8rem;
+  color: #444;
+}
+
+/* ─────────────────────────────────────────────
+   STEP 3 — FULL STRATEGY
+───────────────────────────────────────────── */
+#step3 {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 2rem 1.5rem 5rem;
+}
+
+/* Tabs */
+.tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 2rem;
+}
+.tab-btn {
+  background: none;
+  border: none;
+  color: var(--grey);
+  font-family: 'Caveat', cursive;
+  font-size: 1.1rem;
+  padding: 0.6rem 1.2rem;
+  cursor: pointer;
+  position: relative;
+  transition: color 0.15s;
+}
+.tab-btn:hover { color: var(--white); }
+.tab-btn.active {
+  color: var(--yellow);
+}
+.tab-btn.active::after {
+  content: '';
+  position: absolute;
+  bottom: -1px; left: 0; right: 0;
+  height: 2px;
+  background: var(--yellow);
+}
+.tab-panel { display: none; }
+.tab-panel.active { display: block; }
+
+/* Intel tab */
+.intel-section { margin-bottom: 2rem; }
+.intel-section h3 { font-size: 1.5rem; margin-bottom: 1rem; color: var(--white); }
+.intel-item {
+  background: var(--card);
+  border-left: 4px solid var(--yellow);
+  padding: 0.9rem 1.1rem;
+  margin-bottom: 0.7rem;
+  border-radius: 0 4px 4px 0;
+}
+.intel-topic { font-weight: 600; color: var(--white); margin-bottom: 0.2rem; }
+.intel-why { font-size: 0.88rem; color: var(--grey); }
+
+/* 7-day plan table */
+.plan-table-wrap { overflow-x: auto; margin-bottom: 1.5rem; }
+.plan-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.88rem;
+}
+.plan-table th {
+  background: var(--yellow);
+  color: var(--black);
+  font-family: 'Caveat', cursive;
+  font-size: 1rem;
+  padding: 0.6rem 0.9rem;
+  text-align: left;
+  white-space: nowrap;
+}
+.plan-table td {
+  padding: 0.7rem 0.9rem;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+  color: var(--grey);
+}
+.plan-table tr:hover td { background: #141414; }
+.plan-table td:first-child { font-family: 'Caveat', cursive; font-size: 1rem; color: var(--white); white-space: nowrap; }
+.plan-table td.hook { color: var(--white); font-weight: 500; }
+.trending-badge {
+  display: inline-block;
+  background: #1a1000;
+  color: var(--yellow);
+  border: 1px solid #3a2800;
+  font-size: 0.72rem;
+  padding: 0.1rem 0.4rem;
+  border-radius: 3px;
+  font-weight: 600;
+}
+
+/* Content pillars */
+.pillar-cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; margin-bottom: 2rem; }
+@media(max-width:700px) { .pillar-cards { grid-template-columns: 1fr; } }
+.pillar-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--yellow);
+  border-radius: 0 4px 4px 0;
+  padding: 1.1rem;
+}
+.pillar-name { font-family: 'Caveat', cursive; font-size: 1.3rem; color: var(--yellow); margin-bottom: 0.4rem; }
+.pillar-why { font-size: 0.85rem; color: var(--grey); margin-bottom: 0.5rem; }
+.pillar-topic { font-size: 0.9rem; color: var(--white); margin-bottom: 0.5rem; }
+
+/* Dos and don'ts */
+.dos-donts { display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; margin-bottom: 2rem; }
+@media(max-width:600px) { .dos-donts { grid-template-columns: 1fr; } }
+.do-list li, .dont-list li {
+  display: flex; align-items: flex-start; gap: 0.6rem;
+  padding: 0.4rem 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 0.9rem;
+  list-style: none;
+}
+.do-list li .icon { color: var(--success); }
+.dont-list li .icon { color: var(--error); }
+
+/* Profile fixes */
+.fix-cards { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 2rem; }
+@media(max-width:600px) { .fix-cards { grid-template-columns: 1fr; } }
+.fix-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--yellow);
+  border-radius: 0 4px 4px 0;
+  padding: 1rem;
+}
+.fix-section { margin-bottom: 0.3rem; }
+.fix-issue { font-size: 0.85rem; color: var(--grey); margin-bottom: 0.3rem; }
+.fix-fix { font-size: 0.9rem; color: var(--white); margin-bottom: 0.4rem; }
+.impact-high { background: var(--yellow); color: var(--black); }
+.impact-med  { background: #2a2a2a; color: var(--grey); }
+.impact-low  { background: #1a1a1a; color: #555; }
+
+/* Milestones */
+.milestones { display: flex; gap: 0; position: relative; margin-bottom: 2.5rem; flex-wrap: wrap; }
+.milestone-item {
+  flex: 1;
+  min-width: 200px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 1.1rem;
+  position: relative;
+}
+.milestone-item:not(:last-child)::after {
+  content: '- - -';
+  position: absolute;
+  right: -1.5rem;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--yellow);
+  font-size: 0.8rem;
+  letter-spacing: -2px;
+}
+.milestones-wrap { display: flex; gap: 1rem; flex-wrap: wrap; }
+.milestone-month { font-family: 'Caveat', cursive; font-size: 1rem; color: var(--yellow); margin-bottom: 0.4rem; }
+.milestone-goal { font-family: 'Caveat', cursive; font-size: 1.3rem; color: var(--white); margin-bottom: 0.3rem; }
+.milestone-how { font-size: 0.85rem; color: var(--grey); }
+
+/* Agent log */
+.agent-log { margin-top: 3rem; }
+.log-toggle {
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--grey);
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: 0.9rem;
+  padding: 0.5rem 1rem;
+  cursor: pointer;
+  border-radius: 4px;
+  transition: all 0.2s;
+}
+.log-toggle:hover { color: var(--white); border-color: #444; }
+.log-body { margin-top: 1rem; display: none; }
+.log-body.open { display: block; }
+.log-entry {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 0.85rem;
+}
+.log-entry:last-child { border-bottom: none; }
+.log-tool { white-space: nowrap; }
+.log-query { color: var(--grey); flex: 1; }
+.log-insight { color: var(--white); font-size: 0.8rem; }
+.log-failed .log-query { color: #666; }
+
+/* Bottom actions */
+.s3-actions {
+  display: flex;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin-top: 3rem;
+}
+
+/* Error card */
+.error-card {
+  background: #1a0000;
+  border: 1px solid var(--error);
+  border-radius: 4px;
+  padding: 1.2rem 1.4rem;
+  color: var(--white);
+  max-width: 500px;
+  margin: 2rem auto;
+  text-align: center;
+}
+.error-card p { margin-bottom: 1rem; color: #ff8888; font-size: 0.95rem; }
+</style>
+</head>
+<body>
+
+<!-- ─── STEP 1: UPLOAD ─────────────────────────────────────────── -->
+<div id="step1">
+  <nav class="s1-nav">
+    <span class="logo">REV3</span>
+  </nav>
+
+  <div class="s1-hero">
+    <h1>Your LinkedIn. <span class="yellow">Dissected.</span></h1>
+    <h2>By an agent that actually does its homework.</h2>
+    <p>
+      No generic advice. Our AI agent searches live news, scans Reddit,
+      checks Google Trends UK, and stalks your competitors — then builds
+      a strategy around what's actually happening this week.
+    </p>
+
+    <div class="feature-pills">
+      <span class="feature-pill">📰 Live news</span>
+      <span class="feature-pill">📊 Google Trends UK</span>
+      <span class="feature-pill">👀 Competitor intel</span>
+    </div>
+
+    <details class="how-to">
+      <summary>▶ How to get your LinkedIn PDF</summary>
+      <div class="how-to-body">
+        <div class="how-step">
+          <div class="how-step-num">1</div>
+          <div>Go to your LinkedIn profile page</div>
+        </div>
+        <div class="how-step">
+          <div class="how-step-num">2</div>
+          <div>Click <strong style="color:var(--white)">More</strong> → <strong style="color:var(--white)">Save to PDF</strong></div>
+        </div>
+        <div class="how-step">
+          <div class="how-step-num">3</div>
+          <div>Upload the downloaded PDF below</div>
+        </div>
+      </div>
+    </details>
+
+    <div class="upload-zone" id="uploadZone">
+      <input type="file" accept=".pdf" id="fileInput" />
+      <div class="upload-icon">📄</div>
+      <strong>Drag &amp; drop your LinkedIn PDF here</strong>
+      <p>or click to browse</p>
+    </div>
+    <p class="upload-note">Your PDF never leaves your session. We don't store anything.</p>
+
+    <div id="uploadStatus" style="margin-top:1rem; min-height:2rem; font-size:0.9rem;"></div>
+  </div>
+</div>
+
+<!-- ─── STEP 2: PROFILE SNAPSHOT ─────────────────────────────── -->
+<div id="step2" class="hidden fade-in">
+  <div class="progress-bar">
+    <div class="prog-step done" id="prog1">
+      <div class="prog-circle">✓</div>
+      <span>Upload</span>
+    </div>
+    <div class="prog-line"></div>
+    <div class="prog-step active" id="prog2">
+      <div class="prog-circle">2</div>
+      <span>Analyze</span>
+    </div>
+    <div class="prog-line"></div>
+    <div class="prog-step" id="prog3">
+      <div class="prog-circle">3</div>
+      <span>Strategy</span>
+    </div>
+  </div>
+
+  <div class="s2-grid">
+    <!-- Left column -->
+    <div>
+      <div class="sticky">Your profile, straight up 📋</div>
+
+      <h2 id="s2Name" style="font-size:2.2rem; color:var(--white); margin-top:0.5rem;"></h2>
+      <p id="s2Role" style="color:var(--grey); margin-bottom:1.5rem;"></p>
+
+      <!-- Score ring -->
+      <div class="score-ring-wrap">
+        <svg class="score-ring-svg" width="120" height="120" viewBox="0 0 120 120">
+          <circle class="score-ring-bg" cx="60" cy="60" r="50"/>
+          <circle class="score-ring-fill" id="scoreRingFill" cx="60" cy="60" r="50"/>
+          <text class="score-ring-text" id="scoreNum" x="60" y="62" transform="rotate(90,60,60)">0</text>
+        </svg>
+        <div class="score-label">Profile Score</div>
+        <div class="score-rating" id="scoreRating"></div>
+      </div>
+
+      <!-- Breakdown bars -->
+      <div id="breakdownBars" style="margin-bottom:1.5rem;"></div>
+
+      <!-- First impression -->
+      <div class="card" style="margin-bottom:1rem;">
+        <div class="sticky" style="font-size:0.85rem; transform:rotate(-1deg);">What a stranger sees in 8 seconds</div>
+        <p id="s2FirstImpression" style="font-style:italic; color:var(--grey); margin-top:0.75rem; font-size:0.95rem;"></p>
+      </div>
+
+      <!-- Competitive edge -->
+      <div class="card">
+        <div class="sticky" style="font-size:0.85rem; transform:rotate(1.5deg);">Your actual edge</div>
+        <p id="s2CompEdge" style="color:var(--white); margin-top:0.75rem; font-size:0.95rem;"></p>
+      </div>
+    </div>
+
+    <!-- Right column -->
+    <div style="display:flex; flex-direction:column; gap:1rem;">
+      <div class="card-plain">
+        <h3 style="font-size:1.3rem; color:var(--white); margin-bottom:0.75rem;">What you're doing right ✅</h3>
+        <div id="s2Strengths" class="chip-list"></div>
+      </div>
+
+      <div class="card-plain">
+        <h3 style="font-size:1.3rem; color:var(--white); margin-bottom:0.75rem;">Where you're dropping the ball ❌</h3>
+        <div id="s2Gaps" class="chip-list"></div>
+      </div>
+
+      <div class="card-plain">
+        <h3 style="font-size:1.3rem; color:var(--white); margin-bottom:0.75rem;">Opportunities you're sleeping on 💡</h3>
+        <div id="s2Opps" class="chip-list"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Audience selection -->
+  <div class="audience-section">
+    <hr class="divider" />
+    <h2 style="font-size:2rem; margin-bottom:0.4rem;">Who do you want to reach?</h2>
+    <p style="color:var(--grey); font-size:0.95rem; margin-bottom:0;">Pick one. The agent will build your strategy around them.</p>
+    <div class="audience-grid" id="audienceGrid"></div>
+
+    <button class="btn" id="runAgentBtn" style="width:100%; font-size:1.3rem; padding:1rem;" disabled>
+      Run the Agent →
+    </button>
+  </div>
+</div>
+
+<!-- ─── AGENT PROGRESS ────────────────────────────────────────── -->
+<div id="stepAgent" class="hidden fade-in">
+  <h1 class="agent-title caveat">Agent's on it. 🕵️</h1>
+  <p class="agent-subtitle">Searching the internet so you don't have to.</p>
+
+  <div class="agent-feed" id="agentFeed"></div>
+
+  <div class="agent-progress-bar">
+    <div class="agent-progress-fill" id="agentProgressFill"></div>
+  </div>
+
+  <p class="agent-hint">This usually takes 20–40 seconds. Actual research takes time.</p>
+</div>
+
+<!-- ─── STEP 3: FULL STRATEGY ─────────────────────────────────── -->
+<div id="step3" class="hidden fade-in">
+  <div style="display:flex; align-items:center; gap:1rem; margin-bottom:2rem; flex-wrap:wrap;">
+    <span class="logo">REV3</span>
+    <span style="color:var(--grey); font-size:0.9rem;">Strategy ready. Let's get into it.</span>
+  </div>
+
+  <div class="progress-bar">
+    <div class="prog-step done">
+      <div class="prog-circle">✓</div>
+      <span>Upload</span>
+    </div>
+    <div class="prog-line"></div>
+    <div class="prog-step done">
+      <div class="prog-circle">✓</div>
+      <span>Analyze</span>
+    </div>
+    <div class="prog-line"></div>
+    <div class="prog-step active">
+      <div class="prog-circle">3</div>
+      <span>Strategy</span>
+    </div>
+  </div>
+
+  <!-- Tabs -->
+  <div class="tabs">
+    <button class="tab-btn active" data-tab="intel">📊 Intel</button>
+    <button class="tab-btn" data-tab="plan">🗓 7-Day Plan</button>
+    <button class="tab-btn" data-tab="overview">📋 Overview</button>
+    <button class="tab-btn" data-tab="dosdontss">✅ Dos &amp; Don'ts</button>
+    <button class="tab-btn" data-tab="fixes">🔧 Fixes</button>
+  </div>
+
+  <!-- TAB: INTEL -->
+  <div id="tab-intel" class="tab-panel active">
+    <div class="sticky" style="margin-bottom:1.5rem;">What I found this week 🔍</div>
+
+    <div class="intel-section">
+      <h3>Trending in your world 📰</h3>
+      <div id="trendingList"></div>
+    </div>
+
+    <hr class="divider" />
+
+    <div class="intel-section">
+      <h3>What your audience is actually saying 💬</h3>
+      <div id="painPointsList"></div>
+    </div>
+
+    <hr class="divider" />
+
+    <div class="intel-section">
+      <h3>Gaps your competitors are missing 👀</h3>
+      <div id="competitorGapsList"></div>
+    </div>
+
+    <hr class="divider" />
+
+    <div class="intel-section">
+      <h3>News hooks you can use this week 📰</h3>
+      <div id="newsHooksList"></div>
+    </div>
+  </div>
+
+  <!-- TAB: 7-DAY PLAN -->
+  <div id="tab-plan" class="tab-panel">
+    <h2 class="caveat" style="font-size:2rem; margin-bottom:1.5rem;">Your week, sorted. 📅</h2>
+    <div class="plan-table-wrap">
+      <table class="plan-table">
+        <thead>
+          <tr>
+            <th>Day</th>
+            <th>Type</th>
+            <th>Topic</th>
+            <th>Opening Hook</th>
+            <th>Trending Angle</th>
+            <th>Why It Works</th>
+          </tr>
+        </thead>
+        <tbody id="planTableBody"></tbody>
+      </table>
+    </div>
+    <button class="btn" id="copyPlanBtn" style="margin-top:0.5rem;">Copy Full Plan</button>
+  </div>
+
+  <!-- TAB: OVERVIEW -->
+  <div id="tab-overview" class="tab-panel">
+    <div class="pillar-cards" id="pillarCards"></div>
+
+    <div class="card" style="margin-bottom:1rem;">
+      <div class="sticky" style="font-size:0.9rem; transform:rotate(-1.5deg);">Your voice on LinkedIn</div>
+      <p id="postingVoice" style="font-style:italic; color:var(--grey); margin-top:0.75rem;"></p>
+    </div>
+
+    <div class="card">
+      <div class="sticky" style="font-size:0.9rem; transform:rotate(1deg);">Your posting rhythm</div>
+      <p id="weeklyRhythm" style="color:var(--white); margin-top:0.75rem;"></p>
+    </div>
+  </div>
+
+  <!-- TAB: DOS & DON'TS -->
+  <div id="tab-dosdontss" class="tab-panel">
+    <div class="dos-donts">
+      <div>
+        <h2 class="caveat" style="font-size:1.8rem; color:var(--yellow); margin-bottom:1rem;">DO THIS</h2>
+        <ul class="do-list" id="doList"></ul>
+      </div>
+      <div>
+        <h2 class="caveat" style="font-size:1.8rem; color:var(--white); margin-bottom:1rem;">DON'T DO THIS</h2>
+        <ul class="dont-list" id="dontList"></ul>
+      </div>
+    </div>
+
+    <hr class="divider" />
+
+    <h2 class="caveat" style="font-size:1.6rem; margin-bottom:1rem;">3 moves your competitors aren't making 🎯</h2>
+    <div id="engagementTactics" style="display:flex; flex-direction:column; gap:0.75rem;"></div>
+  </div>
+
+  <!-- TAB: FIXES -->
+  <div id="tab-fixes" class="tab-panel">
+    <h2 class="caveat" style="font-size:1.8rem; margin-bottom:1.2rem;">Quick wins 🛠️</h2>
+    <div class="fix-cards" id="fixCards"></div>
+
+    <hr class="divider" />
+
+    <h2 class="caveat" style="font-size:1.8rem; margin-bottom:1.2rem;">6 months from now 🗓️</h2>
+    <div class="milestones-wrap" id="milestonesWrap"></div>
+  </div>
+
+  <!-- Agent log -->
+  <div class="agent-log">
+    <button class="log-toggle" id="logToggle">↓ See how the agent built this</button>
+    <div class="log-body" id="logBody">
+      <div class="card-plain" style="margin-top:0.5rem;">
+        <h3 class="caveat" style="font-size:1.5rem; margin-bottom:0.3rem;">The agent's research trail 🕵️</h3>
+        <p style="color:var(--grey); font-size:0.85rem; margin-bottom:1rem;">Every source. Every search. Every insight.</p>
+        <div id="logEntries"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Bottom actions -->
+  <div class="s3-actions">
+    <button class="btn btn-outline" id="startAgainBtn">Start Again</button>
+    <button class="btn" id="shareBtn">Share REV3</button>
+  </div>
+</div>
+
+<!-- ─── ERROR ────────────────────────────────────────────────── -->
+<div id="errorContainer" class="hidden"></div>
+
+<script>
+// ─── State ──────────────────────────────────────────────────────
+let profileText = '';
+let analysisData = null;
+let selectedAudience = null;
+let fullStrategy = null;
+
+// ─── Utils ──────────────────────────────────────────────────────
+function show(id) {
+  document.querySelectorAll('#step1,#step2,#stepAgent,#step3,#errorContainer')
+    .forEach(el => el.classList.add('hidden'));
+  const el = document.getElementById(id);
+  el.classList.remove('hidden');
+  el.classList.add('fade-in');
+  window.scrollTo(0, 0);
+}
+
+function safe(v, fallback = '—') {
+  if (v === null || v === undefined || v === '') return fallback;
+  return v;
+}
+
+function safeArr(v) {
+  return Array.isArray(v) ? v : [];
+}
+
+function escHtml(str) {
+  if (typeof str !== 'string') str = String(str || '');
+  return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ─── STEP 1: Upload ─────────────────────────────────────────────
+const uploadZone = document.getElementById('uploadZone');
+const fileInput  = document.getElementById('fileInput');
+const uploadStatus = document.getElementById('uploadStatus');
+
+uploadZone.addEventListener('dragover', e => { e.preventDefault(); uploadZone.classList.add('drag-over'); });
+uploadZone.addEventListener('dragleave', () => uploadZone.classList.remove('drag-over'));
+uploadZone.addEventListener('drop', e => {
+  e.preventDefault();
+  uploadZone.classList.remove('drag-over');
+  const file = e.dataTransfer.files[0];
+  if (file) handleFile(file);
+});
+fileInput.addEventListener('change', e => { if (e.target.files[0]) handleFile(e.target.files[0]); });
+
+async function handleFile(file) {
+  if (!file.name.toLowerCase().endsWith('.pdf')) {
+    setStatus('❌ Only PDF files. Go grab that LinkedIn export.', 'error');
+    return;
+  }
+  setStatus('<span class="spinner"></span> Uploading...', '');
+  const fd = new FormData();
+  fd.append('file', file);
+  try {
+    const r = await fetch('/upload', { method: 'POST', body: fd });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.detail || 'Upload failed');
+    profileText = d.text;
+    setStatus('<span class="spinner"></span> Analysing your profile...', '');
+    const ar = await fetch('/analyze-only', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ profile_text: profileText }),
+    });
+    const ad = await ar.json();
+    if (!ar.ok) throw new Error(ad.detail || 'Analysis failed');
+    analysisData = ad;
+    renderStep2(ad);
+    show('step2');
+  } catch (err) {
+    setStatus(`<span style="color:var(--error)">❌ ${escHtml(err.message)}</span>`, 'error');
+  }
+}
+
+function setStatus(html, _type) {
+  uploadStatus.innerHTML = html;
+}
+
+// ─── STEP 2: Profile Snapshot ───────────────────────────────────
+function renderStep2(d) {
+  document.getElementById('s2Name').textContent = safe(d.name, 'Your Profile');
+  document.getElementById('s2Role').textContent = safe(d.currentRole);
+  document.getElementById('s2FirstImpression').textContent = safe(d.firstImpression);
+  document.getElementById('s2CompEdge').textContent = safe(d.competitiveEdge);
+
+  // Score ring animation
+  const score = Math.max(0, Math.min(100, d.profileScore || 0));
+  const circumference = 314;
+  const offset = circumference - (circumference * score / 100);
+  const ring = document.getElementById('scoreRingFill');
+  const numEl = document.getElementById('scoreNum');
+  ring.style.setProperty('--target-offset', offset);
+  setTimeout(() => {
+    ring.style.strokeDashoffset = offset;
+    let current = 0;
+    const step = () => {
+      current = Math.min(score, current + 2);
+      numEl.textContent = current;
+      if (current < score) requestAnimationFrame(step);
+    };
+    requestAnimationFrame(step);
+  }, 100);
+
+  const rating = score >= 90 ? 'Proper job 🔥'
+    : score >= 70 ? 'Decent, but room to grow 📈'
+    : score >= 50 ? 'Mid. Let\'s fix that 🛠️'
+    : 'We\'ve got work to do 💀';
+  document.getElementById('scoreRating').textContent = rating;
+
+  // Breakdown bars
+  const sb = d.scoreBreakdown || {};
+  const labels = { headline: 'Headline', about: 'About', experience: 'Experience', skills: 'Skills', completeness: 'Completeness' };
+  const bbEl = document.getElementById('breakdownBars');
+  bbEl.innerHTML = '';
+  Object.entries(labels).forEach(([k, label]) => {
+    const val = sb[k] || 0;
+    const cls = val >= 15 ? 'bar-green' : val >= 10 ? 'bar-amber' : 'bar-red';
+    bbEl.innerHTML += `
+      <div class="breakdown-row">
+        <span class="breakdown-label">${escHtml(label)}</span>
+        <div class="breakdown-bar-wrap">
+          <div class="breakdown-bar ${cls}" style="width:${(val/20)*100}%"></div>
+        </div>
+        <span class="breakdown-score">${val}/20</span>
+      </div>`;
+  });
+
+  // Chips
+  renderChips('s2Strengths', safeArr(d.topStrengths), 'chip');
+  renderChips('s2Gaps', safeArr(d.keyGaps), 'chip-red');
+  renderChips('s2Opps', safeArr(d.hiddenOpportunities), 'chip-dark');
+
+  // Audiences
+  const grid = document.getElementById('audienceGrid');
+  grid.innerHTML = '';
+  safeArr(d.suggestedAudiences).forEach((a, i) => {
+    const card = document.createElement('div');
+    card.className = 'audience-card';
+    card.innerHTML = `
+      <div class="audience-icon">${escHtml(a.icon || '👥')}</div>
+      <div class="audience-label">${escHtml(a.label || '')}</div>
+      <div class="audience-desc">${escHtml(a.description || '')}</div>
+      <div class="audience-why">
+        <span>Why this works for you: </span>
+        <span>${escHtml(a.whyThisAudience || '')}</span>
+      </div>`;
+    card.addEventListener('click', () => {
+      document.querySelectorAll('.audience-card').forEach(c => c.classList.remove('selected'));
+      card.classList.add('selected');
+      selectedAudience = a;
+      document.getElementById('runAgentBtn').disabled = false;
+    });
+    grid.appendChild(card);
+  });
+
+  document.getElementById('runAgentBtn').addEventListener('click', startAgent);
+}
+
+function renderChips(containerId, items, chipClass) {
+  const el = document.getElementById(containerId);
+  el.innerHTML = items.map(s => `<span class="${chipClass}">${escHtml(s)}</span>`).join('');
+}
+
+// ─── AGENT PROGRESS ─────────────────────────────────────────────
+const TOTAL_EVENTS = 12;
+let eventCount = 0;
+
+function startAgent() {
+  if (!selectedAudience) return;
+  show('stepAgent');
+  document.getElementById('agentFeed').innerHTML = '';
+  eventCount = 0;
+  updateProgress(0);
+
+  const body = JSON.stringify({
+    profile_text: profileText,
+    audience_label: selectedAudience.label,
+    audience_description: selectedAudience.description,
+  });
+
+  const evtSrc = new EventSource('/run-agent-stream?' + encodeURIComponent(''));
+  // Use fetch + ReadableStream for POST
+  runAgentStream(body);
+}
+
+async function runAgentStream(body) {
+  const feed = document.getElementById('agentFeed');
+  let activeItem = null;
+
+  function addFeedItem(icon, msg, cls, sourceBadge) {
+    if (activeItem) {
+      activeItem.querySelector('.feed-icon').textContent = '✅';
+      activeItem.querySelector('.feed-msg').classList.remove('active');
+      activeItem.querySelector('.feed-msg').classList.add('done');
+    }
+    const div = document.createElement('div');
+    div.className = 'feed-item';
+    div.innerHTML = `
+      <span class="feed-icon">${icon}</span>
+      <span class="feed-msg ${cls}">${escHtml(msg)}${sourceBadge ? ` <span class="source-badge">${escHtml(sourceBadge)}</span>` : ''}</span>`;
+    feed.appendChild(div);
+    feed.scrollTop = feed.scrollHeight;
+    activeItem = div;
+    eventCount++;
+    updateProgress(Math.min(95, (eventCount / TOTAL_EVENTS) * 100));
+  }
+
+  try {
+    const resp = await fetch('/run-agent', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body,
+    });
+
+    if (!resp.ok) {
+      const err = await resp.json();
+      throw new Error(err.detail || 'Agent failed');
+    }
+
+    const reader = resp.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop();
+
+      for (const line of lines) {
+        if (!line.startsWith('data: ')) continue;
+        let event;
+        try { event = JSON.parse(line.slice(6)); } catch { continue; }
+
+        if (event.stage === 'profile') {
+          addFeedItem('⏳', event.message, 'active', null);
+        } else if (event.stage === 'research') {
+          addFeedItem('⏳', event.message, 'active', event.source || event.tool);
+        } else if (event.stage === 'synthesis') {
+          addFeedItem('⏳', event.message, 'active', null);
+        } else if (event.stage === 'complete') {
+          if (activeItem) {
+            activeItem.querySelector('.feed-icon').textContent = '✅';
+            activeItem.querySelector('.feed-msg').classList.remove('active');
+            activeItem.querySelector('.feed-msg').classList.add('done');
+          }
+          addFeedItem('✅', event.message, 'done', null);
+          updateProgress(100);
+          fullStrategy = event.data;
+          setTimeout(() => {
+            renderStep3(fullStrategy);
+            show('step3');
+          }, 600);
+        } else if (event.stage === 'error') {
+          showError(event.message);
+        }
+      }
+    }
+  } catch (err) {
+    showError(err.message);
+  }
+}
+
+function updateProgress(pct) {
+  document.getElementById('agentProgressFill').style.width = pct + '%';
+}
+
+// ─── STEP 3: Full Strategy ───────────────────────────────────────
+function renderStep3(d) {
+  const mi = d.marketIntelligence || {};
+  const st = d.strategy || {};
+  const pi = d.profileIntelligence || {};
+
+  // INTEL TAB
+  renderIntelList('trendingList', safeArr(mi.trendingTopicsThisWeek), item => `
+    <div class="intel-item">
+      <div class="intel-topic">${escHtml(item.topic)} <span class="source-badge">${escHtml(item.source||'')}</span></div>
+      <div class="intel-why">→ ${escHtml(item.why_it_matters)}</div>
+    </div>`);
+
+  renderIntelList('painPointsList', safeArr(mi.audiencePainPoints), item => `
+    <div class="intel-item">
+      <div class="intel-topic">${escHtml(item.pain)} <span class="source-badge">Reddit</span></div>
+      <div class="intel-why">→ ${escHtml(item.how_to_address)}</div>
+    </div>`);
+
+  renderIntelList('competitorGapsList', safeArr(mi.competitorGaps), item => `
+    <div class="intel-item">
+      <div class="intel-topic">${escHtml(item.gap)} <span class="source-badge">Web Search</span></div>
+      <div class="intel-why">Opportunity: ${escHtml(item.opportunity)}</div>
+      <div class="intel-why" style="margin-top:0.2rem;">Angle: ${escHtml(item.example_angle)}</div>
+    </div>`);
+
+  renderIntelList('newsHooksList', safeArr(mi.newsHooks), item => `
+    <div class="intel-item">
+      <div class="intel-topic">${escHtml(item.headline)} <span class="source-badge">NewsAPI</span></div>
+      <div class="intel-why">Why it matters: ${escHtml(item.relevance)}</div>
+      <div class="intel-why" style="margin-top:0.2rem;">Post angle: ${escHtml(item.post_angle)}</div>
+    </div>`);
+
+  // 7-DAY PLAN TAB
+  const tbody = document.getElementById('planTableBody');
+  tbody.innerHTML = '';
+  safeArr(d.sevenDayPlan).forEach(p => {
+    const hasTrend = p.trendingAngle && p.trendingAngle.length > 2;
+    tbody.innerHTML += `
+      <tr>
+        <td>${escHtml(p.day||'')}</td>
+        <td><span class="chip" style="font-size:0.8rem;">${escHtml(p.postType||'')}</span></td>
+        <td>${escHtml(p.topic||'')}</td>
+        <td class="hook">${escHtml(p.hook||'')}</td>
+        <td>${escHtml(p.trendingAngle||'')}${hasTrend ? ' <span class="trending-badge">🔥 Trending</span>' : ''}</td>
+        <td>${escHtml(p.whyThisWorks||'')}</td>
+      </tr>`;
+  });
+
+  // Copy plan button
+  document.getElementById('copyPlanBtn').onclick = () => {
+    const lines = safeArr(d.sevenDayPlan).map(p =>
+      `${p.day}: [${p.postType}] ${p.topic}\nHook: ${p.hook}\nWhy: ${p.whyThisWorks}\nTrending: ${p.trendingAngle}\n`
+    ).join('\n');
+    navigator.clipboard.writeText(lines).then(() => {
+      document.getElementById('copyPlanBtn').textContent = 'Copied! ✓';
+      setTimeout(() => { document.getElementById('copyPlanBtn').textContent = 'Copy Full Plan'; }, 2000);
+    });
+  };
+
+  // OVERVIEW TAB
+  const pillarsEl = document.getElementById('pillarCards');
+  pillarsEl.innerHTML = '';
+  safeArr(st.contentPillars).forEach(p => {
+    pillarsEl.innerHTML += `
+      <div class="pillar-card">
+        <div class="pillar-name">${escHtml(p.pillar||'')}</div>
+        <div class="pillar-why">${escHtml(p.why||'')}</div>
+        <div class="pillar-topic">${escHtml(p.exampleTopic||'')}</div>
+        <span class="chip" style="font-size:0.8rem;">${escHtml(p.contentFormat||'')}</span>
+      </div>`;
+  });
+  document.getElementById('postingVoice').textContent = safe(st.postingVoice);
+  document.getElementById('weeklyRhythm').textContent = safe(st.weeklyRhythm);
+
+  // DOS & DON'TS TAB
+  const doEl = document.getElementById('doList');
+  doEl.innerHTML = safeArr(st.dos).map(d => `<li><span class="icon">✅</span>${escHtml(d)}</li>`).join('');
+  const dontEl = document.getElementById('dontList');
+  dontEl.innerHTML = safeArr(st.donts).map(d => `<li><span class="icon">❌</span>${escHtml(d)}</li>`).join('');
+  const tacticEl = document.getElementById('engagementTactics');
+  tacticEl.innerHTML = safeArr(st.engagementTactics).map(t => `
+    <div class="card">${escHtml(t)}</div>`).join('');
+
+  // FIXES TAB
+  const fixEl = document.getElementById('fixCards');
+  fixEl.innerHTML = '';
+  safeArr(st.profileTweaks).forEach(f => {
+    const impactClass = (f.impact||'').toLowerCase() === 'high' ? 'impact-high'
+      : (f.impact||'').toLowerCase() === 'medium' || (f.impact||'').toLowerCase() === 'med' ? 'impact-med'
+      : 'impact-low';
+    fixEl.innerHTML += `
+      <div class="fix-card">
+        <div class="fix-section"><span class="chip" style="font-size:0.8rem;">${escHtml(f.section||'')}</span></div>
+        <div class="fix-issue">${escHtml(f.currentIssue||'')}</div>
+        <div class="fix-fix">→ ${escHtml(f.suggestedFix||'')}</div>
+        <span class="chip ${impactClass}" style="font-size:0.75rem;">${escHtml(f.impact||'')}</span>
+      </div>`;
+  });
+
+  const msWrap = document.getElementById('milestonesWrap');
+  msWrap.innerHTML = '';
+  safeArr(st.sixMonthMilestones).forEach(m => {
+    msWrap.innerHTML += `
+      <div class="milestone-item" style="flex:1; min-width:180px; background:var(--card); border:1px solid var(--border); border-radius:4px; padding:1.1rem;">
+        <div class="milestone-month">${escHtml(m.month||'')}</div>
+        <div class="milestone-goal">${escHtml(m.goal||'')}</div>
+        <div class="milestone-how">${escHtml(m.howToMeasure||'')}</div>
+      </div>`;
+  });
+
+  // AGENT LOG
+  const logEl = document.getElementById('logEntries');
+  logEl.innerHTML = '';
+  safeArr(d.agentResearchLog).forEach(entry => {
+    const failed = entry.status === 'failed';
+    logEl.innerHTML += `
+      <div class="log-entry ${failed ? 'log-failed' : ''}">
+        <div class="log-tool">
+          <span class="chip ${failed ? 'chip-red' : ''}" style="font-size:0.75rem;">${escHtml(entry.tool||'')}</span>
+        </div>
+        <div class="log-query">${escHtml(entry.query||'')}</div>
+        <div class="log-insight">→ ${escHtml(entry.insight||'')}</div>
+      </div>`;
+  });
+}
+
+function renderIntelList(id, items, tpl) {
+  const el = document.getElementById(id);
+  if (!items.length) { el.innerHTML = '<p style="color:var(--grey); font-size:0.9rem;">No data found for this section.</p>'; return; }
+  el.innerHTML = items.map(tpl).join('');
+}
+
+// ─── Tabs ────────────────────────────────────────────────────────
+document.querySelectorAll('.tab-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
+  });
+});
+
+// ─── Log toggle ─────────────────────────────────────────────────
+document.getElementById('logToggle').addEventListener('click', () => {
+  const body = document.getElementById('logBody');
+  body.classList.toggle('open');
+  document.getElementById('logToggle').textContent = body.classList.contains('open')
+    ? '↑ Hide research trail' : '↓ See how the agent built this';
+});
+
+// ─── Start Again ─────────────────────────────────────────────────
+document.getElementById('startAgainBtn').addEventListener('click', () => {
+  profileText = ''; analysisData = null; selectedAudience = null; fullStrategy = null;
+  document.getElementById('fileInput').value = '';
+  uploadStatus.innerHTML = '';
+  show('step1');
+});
+
+// ─── Share ───────────────────────────────────────────────────────
+document.getElementById('shareBtn').addEventListener('click', () => {
+  const text = `Just ran my LinkedIn through REV3's AI agent — it searched live news, Reddit & Google Trends to build my content strategy. Try it: ${window.location.href}`;
+  navigator.clipboard.writeText(text).then(() => {
+    document.getElementById('shareBtn').textContent = 'Copied! Share away ✓';
+    setTimeout(() => { document.getElementById('shareBtn').textContent = 'Share REV3'; }, 2500);
+  });
+});
+
+// ─── Error ───────────────────────────────────────────────────────
+function showError(msg) {
+  const c = document.getElementById('errorContainer');
+  c.innerHTML = `
+    <div style="display:flex; align-items:center; justify-content:center; min-height:60vh;">
+      <div class="error-card">
+        <h2 class="caveat" style="font-size:1.8rem; margin-bottom:0.5rem;">Something went sideways 😬</h2>
+        <p>${escHtml(msg)}</p>
+        <button class="btn" onclick="show('step1')">Try again?</button>
+      </div>
+    </div>`;
+  show('errorContainer');
+}
+</script>
+</body>
+</html>
