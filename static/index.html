@@ -814,6 +814,7 @@ async function runAgentStream(body) {
           addFeed('+', ev.message, 'done', null);
           setBar(100);
           fullStrategy = ev.data;
+          saveResults(ev.data);
           setTimeout(() => { renderStep3(fullStrategy); show('step3'); }, 600);
         } else if (ev.stage === 'error') showError(ev.message);
       }
@@ -822,6 +823,28 @@ async function runAgentStream(body) {
 }
 
 function setBar(pct) { document.getElementById('agentBar').style.width = pct + '%'; }
+
+function saveResults(d) {
+  const pi = d.profileIntelligence || {};
+  const st = d.strategy || {};
+  fetch('/save-results', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      name: userName,
+      email: userEmail,
+      profile_name: pi.name || '',
+      current_role: pi.currentRole || '',
+      industry: pi.industry || '',
+      profile_score: pi.profileScore || 0,
+      audience: selectedAudience ? selectedAudience.label : '',
+      content_pillars: (st.contentPillars || []).map(p => p.pillar || '').filter(Boolean),
+      seven_day_topics: (d.sevenDayPlan || []).map(p => `${p.day}: ${p.topic}`),
+      key_gaps: pi.keyGaps || [],
+      competitive_edge: pi.competitiveEdge || '',
+    }),
+  }).catch(() => {});
+}
 
 // ── STEP 3 — Strategy ──────────────────────────────
 function renderStep3(d) {

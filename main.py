@@ -304,6 +304,20 @@ class AgentRequest(BaseModel):
     audience_description: str
 
 
+class ResultsRequest(BaseModel):
+    name: str
+    email: str
+    profile_name: str
+    current_role: str
+    industry: str
+    profile_score: int
+    audience: str
+    content_pillars: list[str]
+    seven_day_topics: list[str]
+    key_gaps: list[str]
+    competitive_edge: str
+
+
 @app.post("/register")
 async def register(req: LeadRequest):
     name = req.name.strip()
@@ -312,7 +326,27 @@ async def register(req: LeadRequest):
         raise HTTPException(status_code=400, detail="Name required.")
     if not re.match(r"[^@]+@[^@]+\.[^@]+", email):
         raise HTTPException(status_code=400, detail="Invalid email.")
-    _append_to_sheet([datetime.utcnow().isoformat(), name, email])
+    _append_to_sheet([datetime.utcnow().isoformat(), name, email, "", "", "", "", "", "", "", "", "registered"])
+    return {"ok": True}
+
+
+@app.post("/save-results")
+async def save_results(req: ResultsRequest):
+    _append_to_sheet([
+        datetime.utcnow().isoformat(),
+        req.name,
+        req.email,
+        req.profile_name,
+        req.current_role,
+        req.industry,
+        req.profile_score,
+        req.audience,
+        " | ".join(req.content_pillars),
+        " | ".join(req.seven_day_topics),
+        " | ".join(req.key_gaps),
+        req.competitive_edge,
+        "completed",
+    ])
     return {"ok": True}
 
 
