@@ -1,4 +1,5 @@
 import os
+import re
 import json
 import time
 import asyncio
@@ -11,6 +12,8 @@ import fitz
 import requests
 import httpx
 import anthropic
+import gspread
+from google.oauth2.service_account import Credentials
 from fastapi import FastAPI, UploadFile, File, HTTPException, Request
 from fastapi.responses import StreamingResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -45,8 +48,25 @@ def check_rate_limit(ip: str) -> bool:
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
 NEWS_API_KEY = os.environ.get("NEWS_API_KEY", "")
 TAVILY_API_KEY = os.environ.get("TAVILY_API_KEY", "")
+GOOGLE_SHEET_ID = os.environ.get("GOOGLE_SHEET_ID", "")
+GOOGLE_SERVICE_ACCOUNT_JSON = os.environ.get("GOOGLE_SERVICE_ACCOUNT_JSON", "")
 
 client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+
+
+def _append_to_sheet(row: list):
+    if not GOOGLE_SHEET_ID or not GOOGLE_SERVICE_ACCOUNT_JSON:
+        return
+    try:
+        creds_dict = json.loads(GOOGLE_SERVICE_ACCOUNT_JSON)
+        creds = Credentials.from_service_account_info(
+            creds_dict,
+            scopes=["https://www.googleapis.com/auth/spreadsheets"],
+        )
+        gc = gspread.authorize(creds)
+        gc.open_by_key(GOOGLE_SHEET_ID).sheet1.append_row(row)
+    except Exception as e:
+        logger.warning(f"Google Sheets write failed: {e}")
 
 
 # ─── Tool implementations ───────────────────────────────────────────────────
@@ -265,6 +285,15 @@ def dispatch_tool(tool_name: str, tool_input: dict) -> str:
 
 # ─── Endpoints ───────────────────────────────────────────────────────────────
 
+def _strip_dashes(text: str) -> str:
+    return text.replace("—", "-").replace("–", "-")
+
+
+class LeadRequest(BaseModel):
+    name: str
+    email: str
+
+
 class AnalyzeRequest(BaseModel):
     profile_text: str
 
@@ -273,6 +302,18 @@ class AgentRequest(BaseModel):
     profile_text: str
     audience_label: str
     audience_description: str
+
+
+@app.post("/register")
+async def register(req: LeadRequest):
+    name = req.name.strip()
+    email = req.email.strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="Name required.")
+    if not re.match(r"[^@]+@[^@]+\.[^@]+", email):
+        raise HTTPException(status_code=400, detail="Invalid email.")
+    _append_to_sheet([datetime.utcnow().isoformat(), name, email])
+    return {"ok": True}
 
 
 @app.post("/upload")
@@ -323,7 +364,7 @@ async def analyze_only(req: AnalyzeRequest):
             system=system,
             messages=[{"role": "user", "content": f"Profile text:\n\n{req.profile_text[:8000]}"}],
         )
-        raw = msg.content[0].text.strip()
+        raw = _strip_dashes(msg.content[0].text.strip())
         if raw.startswith("```"):
             raw = raw.split("```")[1]
             if raw.startswith("json"):
@@ -411,59 +452,51 @@ async def run_agent(request: Request, req: AgentRequest):
                 break
 
             if response.stop_reason == "tool_use":
-                tool_results = []
-                for block in response.content:
-                    if block.type != "tool_use":
-                        continue
-                    tool_name = block.name
-                    tool_input = block.input
+                tool_blocks = [b for b in response.content if b.type == "tool_use"]
 
-                    msg_text = TOOL_MESSAGES.get(tool_name, f"Running {tool_name}...")
-                    source_label = TOOL_SOURCE_LABELS.get(tool_name, tool_name)
+                # Emit all status messages immediately
+                for block in tool_blocks:
                     yield sse({
                         "stage": "research",
-                        "tool": tool_name,
-                        "source": source_label,
-                        "message": msg_text,
+                        "tool": block.name,
+                        "source": TOOL_SOURCE_LABELS.get(block.name, block.name),
+                        "message": TOOL_MESSAGES.get(block.name, f"Running {block.name}..."),
                     })
-                    await asyncio.sleep(0.05)
+                    await asyncio.sleep(0.02)
 
-                    try:
-                        result_str = await asyncio.get_event_loop().run_in_executor(
-                            None, dispatch_tool, tool_name, tool_input
-                        )
-                        result_data = json.loads(result_str)
-                        log_entry = {
-                            "tool": tool_name,
-                            "query": str(tool_input),
-                            "insight": (
-                                result_data[0].get("title", str(result_data)[:100])
-                                if isinstance(result_data, list) and result_data
-                                else str(result_data)[:200]
-                            ),
-                            "status": "success",
-                        }
-                    except Exception as e:
-                        result_str = json.dumps({"error": str(e)})
-                        log_entry = {
-                            "tool": tool_name,
-                            "query": str(tool_input),
-                            "insight": f"Tool failed: {e}",
-                            "status": "failed",
-                        }
+                # Dispatch all tools concurrently
+                loop = asyncio.get_event_loop()
+                raw_results = await asyncio.gather(
+                    *[loop.run_in_executor(None, dispatch_tool, b.name, b.input) for b in tool_blocks],
+                    return_exceptions=True,
+                )
+
+                tool_results = []
+                for block, raw in zip(tool_blocks, raw_results):
+                    if isinstance(raw, Exception):
+                        result_str = json.dumps({"error": str(raw)})
+                        log_entry = {"tool": block.name, "query": str(block.input),
+                                     "insight": f"Tool failed: {raw}", "status": "failed"}
+                    else:
+                        result_str = raw
+                        try:
+                            result_data = json.loads(result_str)
+                            log_entry = {
+                                "tool": block.name, "query": str(block.input),
+                                "insight": (
+                                    result_data[0].get("title", str(result_data)[:100])
+                                    if isinstance(result_data, list) and result_data
+                                    else str(result_data)[:200]
+                                ),
+                                "status": "success",
+                            }
+                        except Exception:
+                            log_entry = {"tool": block.name, "query": str(block.input),
+                                         "insight": result_str[:200], "status": "success"}
 
                     research_log.append(log_entry)
-                    tool_results_for_synthesis.append({
-                        "tool": tool_name,
-                        "input": tool_input,
-                        "result": result_str,
-                    })
-
-                    tool_results.append({
-                        "type": "tool_result",
-                        "tool_use_id": block.id,
-                        "content": result_str,
-                    })
+                    tool_results_for_synthesis.append({"tool": block.name, "input": block.input, "result": result_str})
+                    tool_results.append({"type": "tool_result", "tool_use_id": block.id, "content": result_str})
 
                 messages.append({"role": "user", "content": tool_results})
             else:
@@ -556,7 +589,8 @@ CRITICAL REQUIREMENTS:
 - sixMonthMilestones must have exactly 3 items
 - agentResearchLog will be filled in by the system, leave it as empty array []
 - All text must use London voice: direct, cheeky, first-person from agent perspective
-- Provide real, specific advice based on the actual research data gathered"""
+- Provide real, specific advice based on the actual research data gathered
+- NEVER use em dashes (the character -) in any text. Use commas, colons, or plain hyphens instead."""
 
         try:
             synth_msg = client.messages.create(
@@ -564,7 +598,7 @@ CRITICAL REQUIREMENTS:
                 max_tokens=8000,
                 messages=[{"role": "user", "content": synthesis_prompt}],
             )
-            raw = synth_msg.content[0].text.strip()
+            raw = _strip_dashes(synth_msg.content[0].text.strip())
             if raw.startswith("```"):
                 parts = raw.split("```")
                 raw = parts[1] if len(parts) > 1 else raw
