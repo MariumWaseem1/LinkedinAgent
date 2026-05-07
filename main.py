@@ -302,6 +302,8 @@ class AgentRequest(BaseModel):
     profile_text: str
     audience_label: str
     audience_description: str
+    profile_role: str = ""
+    profile_industry: str = ""
 
 
 class ResultsRequest(BaseModel):
@@ -418,123 +420,42 @@ async def run_agent(request: Request, req: AgentRequest):
         def sse(data: dict) -> str:
             return f"data: {json.dumps(data)}\n\n"
 
-        research_log: list[dict] = []
-
         # Phase 1
         yield sse({"stage": "profile", "message": "Reading your profile. Give me a sec."})
         await asyncio.sleep(0.1)
 
         profile_summary = req.profile_text[:6000]
+        role     = req.profile_role or "professional"
+        industry = req.profile_industry or "business"
 
-        # Phase 2 — agentic loop
-        system_research = (
-            "You are REV3, a sharp AI LinkedIn strategist with a London attitude. "
-            "You have access to tools for searching live news, web content, Google Trends, "
-            "Reddit and competitor analysis. You MUST call ALL FIVE tools at least once "
-            "to build a comprehensive research base. Be thorough. Search the actual industry "
-            "of this person, their role keywords, and topics relevant to their target audience. "
-            "Use first-person when describing findings."
+        # Phase 2 — fire all 5 tools in parallel, no Claude round-trips
+        tool_configs = [
+            ("search_news",              {"query": f"{role} {industry}", "industry": industry}),
+            ("search_web",               {"query": f"LinkedIn thought leaders {role} {industry} 2026"}),
+            ("get_trending_topics",      {"keyword": role, "geo": "GB"}),
+            ("search_reddit",            {"subreddit": "linkedin", "query": f"{role} {industry} tips"}),
+            ("analyze_competitor_content", {"role": role, "industry": industry}),
+        ]
+
+        for tool_name, _ in tool_configs:
+            yield sse({
+                "stage": "research",
+                "tool": tool_name,
+                "source": TOOL_SOURCE_LABELS.get(tool_name, tool_name),
+                "message": TOOL_MESSAGES.get(tool_name, f"Running {tool_name}..."),
+            })
+            await asyncio.sleep(0.02)
+
+        loop = asyncio.get_event_loop()
+        raw_results = await asyncio.gather(
+            *[loop.run_in_executor(None, dispatch_tool, name, inp) for name, inp in tool_configs],
+            return_exceptions=True,
         )
 
-        user_research_msg = (
-            f"Research for this LinkedIn profile:\n\n{profile_summary}\n\n"
-            f"Target audience: {req.audience_label} — {req.audience_description}\n\n"
-            "Use ALL five tools to gather:\n"
-            "1. Latest industry news (search_news)\n"
-            "2. Thought leaders and competitor content (search_web + analyze_competitor_content)\n"
-            "3. Trending topics UK (get_trending_topics)\n"
-            "4. Audience pain points (search_reddit)\n"
-            "Gather as much real, current data as possible."
-        )
-
-        messages = [{"role": "user", "content": user_research_msg}]
         tool_results_for_synthesis: list[dict] = []
-
-        max_iterations = 15
-        iteration = 0
-
-        while iteration < max_iterations:
-            iteration += 1
-            try:
-                response = client.messages.create(
-                    model="claude-sonnet-4-6",
-                    max_tokens=4096,
-                    system=system_research,
-                    tools=TOOL_DEFINITIONS,
-                    messages=messages,
-                )
-            except Exception as e:
-                yield sse({"stage": "error", "message": f"Agent error: {e}"})
-                return
-
-            # Collect assistant message content
-            assistant_content = []
-            for block in response.content:
-                if hasattr(block, "text"):
-                    assistant_content.append({"type": "text", "text": block.text})
-                elif block.type == "tool_use":
-                    assistant_content.append({
-                        "type": "tool_use",
-                        "id": block.id,
-                        "name": block.name,
-                        "input": block.input,
-                    })
-
-            messages.append({"role": "assistant", "content": assistant_content})
-
-            if response.stop_reason == "end_turn":
-                break
-
-            if response.stop_reason == "tool_use":
-                tool_blocks = [b for b in response.content if b.type == "tool_use"]
-
-                # Emit all status messages immediately
-                for block in tool_blocks:
-                    yield sse({
-                        "stage": "research",
-                        "tool": block.name,
-                        "source": TOOL_SOURCE_LABELS.get(block.name, block.name),
-                        "message": TOOL_MESSAGES.get(block.name, f"Running {block.name}..."),
-                    })
-                    await asyncio.sleep(0.02)
-
-                # Dispatch all tools concurrently
-                loop = asyncio.get_event_loop()
-                raw_results = await asyncio.gather(
-                    *[loop.run_in_executor(None, dispatch_tool, b.name, b.input) for b in tool_blocks],
-                    return_exceptions=True,
-                )
-
-                tool_results = []
-                for block, raw in zip(tool_blocks, raw_results):
-                    if isinstance(raw, Exception):
-                        result_str = json.dumps({"error": str(raw)})
-                        log_entry = {"tool": block.name, "query": str(block.input),
-                                     "insight": f"Tool failed: {raw}", "status": "failed"}
-                    else:
-                        result_str = raw
-                        try:
-                            result_data = json.loads(result_str)
-                            log_entry = {
-                                "tool": block.name, "query": str(block.input),
-                                "insight": (
-                                    result_data[0].get("title", str(result_data)[:100])
-                                    if isinstance(result_data, list) and result_data
-                                    else str(result_data)[:200]
-                                ),
-                                "status": "success",
-                            }
-                        except Exception:
-                            log_entry = {"tool": block.name, "query": str(block.input),
-                                         "insight": result_str[:200], "status": "success"}
-
-                    research_log.append(log_entry)
-                    tool_results_for_synthesis.append({"tool": block.name, "input": block.input, "result": result_str})
-                    tool_results.append({"type": "tool_result", "tool_use_id": block.id, "content": result_str})
-
-                messages.append({"role": "user", "content": tool_results})
-            else:
-                break
+        for (tool_name, tool_input), raw in zip(tool_configs, raw_results):
+            result_str = json.dumps({"error": str(raw)}) if isinstance(raw, Exception) else raw
+            tool_results_for_synthesis.append({"tool": tool_name, "input": tool_input, "result": result_str})
 
         # Phase 3 — synthesis
         yield sse({"stage": "synthesis", "message": "Connecting the dots. Nearly there."})
@@ -644,7 +565,7 @@ CRITICAL REQUIREMENTS:
             yield sse({"stage": "error", "message": f"Synthesis failed: {e}"})
             return
 
-        result["agentResearchLog"] = research_log
+        result["agentResearchLog"] = []
 
         yield sse({
             "stage": "complete",

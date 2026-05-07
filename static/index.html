@@ -759,6 +759,8 @@ function startAgent() {
     profile_text: profileText,
     audience_label: selectedAudience.label,
     audience_description: selectedAudience.description,
+    profile_role: analysisData ? (analysisData.currentRole || '') : '',
+    profile_industry: analysisData ? (analysisData.industry || '') : '',
   }));
 }
 
