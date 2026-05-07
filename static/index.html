@@ -1128,8 +1128,8 @@ async function handleFile(file) {
   fd.append('file', file);
   try {
     const r = await fetch('/upload', { method: 'POST', body: fd });
-    const d = await r.json();
-    if (!r.ok) throw new Error(d.detail || 'Upload failed');
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(d.detail || `Upload failed (${r.status})`);
     profileText = d.text;
     setStatus('<span class="spinner"></span> Analysing your profile...', '');
     const ar = await fetch('/analyze-only', {
@@ -1137,8 +1137,8 @@ async function handleFile(file) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ profile_text: profileText }),
     });
-    const ad = await ar.json();
-    if (!ar.ok) throw new Error(ad.detail || 'Analysis failed');
+    const ad = await ar.json().catch(() => ({}));
+    if (!ar.ok) throw new Error(ad.detail || `Analysis failed (${ar.status})`);
     analysisData = ad;
     renderStep2(ad);
     show('step2');

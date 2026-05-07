@@ -317,7 +317,7 @@ async def analyze_only(req: AnalyzeRequest):
     )
     try:
         msg = client.messages.create(
-            model="claude-sonnet-4-20250514",
+            model="claude-sonnet-4-6",
             max_tokens=2000,
             system=system,
             messages=[{"role": "user", "content": f"Profile text:\n\n{req.profile_text[:8000]}"}],
@@ -381,7 +381,7 @@ async def run_agent(request: Request, req: AgentRequest):
             iteration += 1
             try:
                 response = client.messages.create(
-                    model="claude-sonnet-4-20250514",
+                    model="claude-sonnet-4-6",
                     max_tokens=4096,
                     system=system_research,
                     tools=TOOL_DEFINITIONS,
@@ -559,7 +559,7 @@ CRITICAL REQUIREMENTS:
 
         try:
             synth_msg = client.messages.create(
-                model="claude-sonnet-4-20250514",
+                model="claude-sonnet-4-6",
                 max_tokens=8000,
                 messages=[{"role": "user", "content": synthesis_prompt}],
             )
