@@ -162,6 +162,7 @@ def search_reddit(subreddit: str, query: str) -> list[dict]:
                 "selftext": p["data"].get("selftext", "")[:300],
                 "score": p["data"].get("score", 0),
                 "num_comments": p["data"].get("num_comments", 0),
+                "url": "https://www.reddit.com" + p["data"].get("permalink", ""),
             }
             for p in posts
         ]
@@ -180,6 +181,7 @@ def analyze_competitor_content(role: str, industry: str) -> list[dict]:
                     "topic": r.get("title", ""),
                     "engagement_signal": r.get("content", "")[:200],
                     "gap_opportunity": f"Underexplored angle in: {r.get('title', '')}",
+                    "url": r.get("url", ""),
                 }
             )
         return output
@@ -492,16 +494,16 @@ Return ONLY valid JSON (no markdown, no commentary) in exactly this structure:
   }},
   "marketIntelligence": {{
     "trendingTopicsThisWeek": [
-      {{"topic": "", "source": "", "why_it_matters": ""}}
+      {{"topic": "", "source": "", "why_it_matters": "", "url": ""}}
     ],
     "audiencePainPoints": [
-      {{"pain": "", "source": "", "how_to_address": ""}}
+      {{"pain": "", "source": "", "how_to_address": "", "url": ""}}
     ],
     "competitorGaps": [
-      {{"gap": "", "opportunity": "", "example_angle": ""}}
+      {{"gap": "", "opportunity": "", "example_angle": "", "url": ""}}
     ],
     "newsHooks": [
-      {{"headline": "", "relevance": "", "post_angle": ""}}
+      {{"headline": "", "relevance": "", "post_angle": "", "url": ""}}
     ]
   }},
   "strategy": {{
@@ -546,7 +548,8 @@ CRITICAL REQUIREMENTS:
 - agentResearchLog will be filled in by the system, leave it as empty array []
 - All text must use London voice: direct, cheeky, first-person from agent perspective
 - Provide real, specific advice based on the actual research data gathered
-- NEVER use em dashes (the character -) in any text. Use commas, colons, or plain hyphens instead."""
+- NEVER use em dashes (the character -) in any text. Use commas, colons, or plain hyphens instead.
+- For every item in trendingTopicsThisWeek, audiencePainPoints, competitorGaps and newsHooks you MUST copy the exact url from the research data. If no url exists leave it as empty string."""
 
         try:
             synth_msg = client.messages.create(

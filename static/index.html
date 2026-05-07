@@ -230,7 +230,9 @@ hr.div{border:none;border-top:1px solid rgba(37,99,235,.1);margin:1.75rem 0;}
 .prog-bar-fill{height:100%;background:linear-gradient(90deg,var(--blue-400),var(--blue-600));border-radius:2px;transition:width .5s ease;width:0%;}
 .agent-hint{margin-top:1rem;font-size:.78rem;color:var(--slate-400);}
 
-.source-badge{font-size:.67rem;font-weight:700;padding:.1rem .45rem;border-radius:20px;background:var(--blue-50);color:var(--blue-600);border:1px solid var(--blue-100);letter-spacing:.04em;text-transform:uppercase;}
+.source-badge{font-size:.67rem;font-weight:700;padding:.1rem .45rem;border-radius:20px;background:var(--blue-50);color:var(--blue-600);border:1px solid var(--blue-100);letter-spacing:.04em;text-transform:uppercase;text-decoration:none;}
+.source-badge-link{cursor:pointer;transition:all .15s ease;}
+.source-badge-link:hover{background:var(--blue-600);color:#fff;border-color:var(--blue-600);}
 
 /* =====================================================
    STEP 3 — Strategy
@@ -853,16 +855,16 @@ function renderStep3(d) {
   const mi = d.marketIntelligence || {}, st = d.strategy || {};
 
   intelList('trendingList', safeArr(mi.trendingTopicsThisWeek), x =>
-    `<div class="intel-item"><div class="intel-topic">${esc(x.topic)} <span class="source-badge">${esc(x.source||'')}</span></div><div class="intel-why">${esc(x.why_it_matters)}</div></div>`);
+    `<div class="intel-item"><div class="intel-topic">${esc(x.topic)} ${srcBadge(x.source||'Source', x.url)}</div><div class="intel-why">${esc(x.why_it_matters)}</div></div>`);
 
   intelList('painPointsList', safeArr(mi.audiencePainPoints), x =>
-    `<div class="intel-item"><div class="intel-topic">${esc(x.pain)} <span class="source-badge">Reddit</span></div><div class="intel-why">${esc(x.how_to_address)}</div></div>`);
+    `<div class="intel-item"><div class="intel-topic">${esc(x.pain)} ${srcBadge('Reddit', x.url)}</div><div class="intel-why">${esc(x.how_to_address)}</div></div>`);
 
   intelList('competitorGapsList', safeArr(mi.competitorGaps), x =>
-    `<div class="intel-item"><div class="intel-topic">${esc(x.gap)} <span class="source-badge">Web Search</span></div><div class="intel-why">Opportunity: ${esc(x.opportunity)}</div><div class="intel-why" style="margin-top:.2rem;">Angle: ${esc(x.example_angle)}</div></div>`);
+    `<div class="intel-item"><div class="intel-topic">${esc(x.gap)} ${srcBadge('Web Search', x.url)}</div><div class="intel-why">Opportunity: ${esc(x.opportunity)}</div><div class="intel-why" style="margin-top:.2rem;">Angle: ${esc(x.example_angle)}</div></div>`);
 
   intelList('newsHooksList', safeArr(mi.newsHooks), x =>
-    `<div class="intel-item"><div class="intel-topic">${esc(x.headline)} <span class="source-badge">NewsAPI</span></div><div class="intel-why">Why it matters: ${esc(x.relevance)}</div><div class="intel-why" style="margin-top:.2rem;">Post angle: ${esc(x.post_angle)}</div></div>`);
+    `<div class="intel-item"><div class="intel-topic">${esc(x.headline)} ${srcBadge('NewsAPI', x.url)}</div><div class="intel-why">Why it matters: ${esc(x.relevance)}</div><div class="intel-why" style="margin-top:.2rem;">Post angle: ${esc(x.post_angle)}</div></div>`);
 
   // 7-day plan
   const tbody = document.getElementById('planTableBody');
@@ -913,6 +915,13 @@ function renderStep3(d) {
   document.getElementById('msWrap').innerHTML = safeArr(st.sixMonthMilestones).map(m =>
     `<div class="ms-item"><div class="ms-month">${esc(m.month||'')}</div><div class="ms-goal">${esc(m.goal||'')}</div><div class="ms-how">${esc(m.howToMeasure||'')}</div></div>`
   ).join('');
+}
+
+function srcBadge(label, url) {
+  if (url && url.startsWith('http')) {
+    return `<a href="${esc(url)}" target="_blank" rel="noopener noreferrer" class="source-badge source-badge-link">${esc(label)}</a>`;
+  }
+  return `<span class="source-badge">${esc(label)}</span>`;
 }
 
 function intelList(id, items, tpl) {
