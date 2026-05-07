@@ -464,7 +464,7 @@ async def run_agent(request: Request, req: AgentRequest):
         yield sse({"stage": "synthesis", "message": "Connecting the dots. Nearly there."})
         await asyncio.sleep(0.1)
 
-        research_dump = json.dumps(tool_results_for_synthesis, indent=2)[:12000]
+        research_dump = json.dumps(tool_results_for_synthesis, indent=2)[:6000]
 
         synthesis_prompt = f"""You are REV3, an elite LinkedIn brand strategist with a London attitude.
 
@@ -554,7 +554,7 @@ CRITICAL REQUIREMENTS:
         try:
             synth_msg = client.messages.create(
                 model="claude-sonnet-4-6",
-                max_tokens=8000,
+                max_tokens=16000,
                 messages=[{"role": "user", "content": synthesis_prompt}],
             )
             raw = _strip_dashes(synth_msg.content[0].text.strip())
@@ -564,7 +564,17 @@ CRITICAL REQUIREMENTS:
                 if raw.startswith("json"):
                     raw = raw[4:]
                 raw = raw.strip()
-            result = json.loads(raw)
+            # If truncated mid-JSON, try to salvage by closing open structures
+            try:
+                result = json.loads(raw)
+            except json.JSONDecodeError:
+                # Count open braces/brackets and close them
+                open_braces   = raw.count('{') - raw.count('}')
+                open_brackets = raw.count('[') - raw.count(']')
+                # Remove trailing partial string/value
+                raw = raw.rstrip().rstrip(',')
+                raw += ']' * open_brackets + '}' * open_braces
+                result = json.loads(raw)
         except Exception as e:
             yield sse({"stage": "error", "message": f"Synthesis failed: {e}"})
             return
