@@ -56,17 +56,17 @@ client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
 
 def _append_to_sheet(row: list):
     if not GOOGLE_SHEET_ID or not GOOGLE_SERVICE_ACCOUNT_JSON:
+        logger.info("Google Sheets not configured — skipping write.")
         return
     try:
         creds_dict = json.loads(GOOGLE_SERVICE_ACCOUNT_JSON)
-        creds = Credentials.from_service_account_info(
-            creds_dict,
-            scopes=["https://www.googleapis.com/auth/spreadsheets"],
+        gc = gspread.service_account_from_dict(creds_dict)
+        gc.open_by_key(GOOGLE_SHEET_ID).sheet1.append_row(
+            [str(v) for v in row], value_input_option="USER_ENTERED"
         )
-        gc = gspread.authorize(creds)
-        gc.open_by_key(GOOGLE_SHEET_ID).sheet1.append_row(row)
+        logger.info("Google Sheets row appended OK.")
     except Exception as e:
-        logger.warning(f"Google Sheets write failed: {e}")
+        logger.error(f"Google Sheets write failed: {e}")
 
 
 # ─── Tool implementations ───────────────────────────────────────────────────
@@ -375,23 +375,24 @@ async def upload_pdf(file: UploadFile = File(...)):
 @app.post("/analyze-only")
 async def analyze_only(req: AnalyzeRequest):
     system = (
-        "You are a sharp LinkedIn strategist. Analyze this profile and return JSON:\n"
+        "You are a sharp LinkedIn strategist. Analyze this profile and return JSON.\n"
+        "Be brutally honest with scores. Keep ALL text fields SHORT - see limits below.\n\n"
         "{\n"
-        '  "name": "",\n'
-        '  "currentRole": "",\n'
-        '  "industry": "",\n'
+        '  "name": "Full name only",\n'
+        '  "currentRole": "Job title only, max 6 words",\n'
+        '  "industry": "One or two words e.g. SaaS, Finance",\n'
         '  "profileScore": 0,\n'
         '  "scoreBreakdown": { "headline": 0, "about": 0, "experience": 0, "skills": 0, "completeness": 0 },\n'
-        '  "topStrengths": ["", "", ""],\n'
-        '  "keyGaps": ["", "", ""],\n'
-        '  "firstImpression": "",\n'
-        '  "competitiveEdge": "",\n'
-        '  "hiddenOpportunities": ["", "", ""],\n'
+        '  "topStrengths": ["max 8 words each", "", ""],\n'
+        '  "keyGaps": ["max 8 words each", "", ""],\n'
+        '  "firstImpression": "One sentence, max 15 words. What a stranger thinks in 8 seconds.",\n'
+        '  "competitiveEdge": "One sentence, max 15 words. The one thing that sets them apart.",\n'
+        '  "hiddenOpportunities": ["max 10 words each", "", ""],\n'
         '  "suggestedAudiences": [\n'
-        '    { "label": "", "description": "", "icon": "", "whyThisAudience": "" }\n'
+        '    { "label": "2-4 words", "description": "max 10 words", "icon": "", "whyThisAudience": "max 12 words" }\n'
         '  ]\n'
         "}\n"
-        "Return only valid JSON. No markdown. Be brutally honest with scores."
+        "Return only valid JSON. No markdown. No em dashes."
     )
     try:
         msg = client.messages.create(
