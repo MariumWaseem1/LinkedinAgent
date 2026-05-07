@@ -285,13 +285,14 @@ async def upload_pdf(file: UploadFile = File(...)):
         text = ""
         for page in doc:
             text += page.get_text()
+        page_count = doc.page_count
         doc.close()
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Could not parse PDF: {e}")
     text = text.strip()
     if len(text) < 100:
         raise HTTPException(status_code=400, detail="PDF too short or not a LinkedIn export.")
-    return {"text": text, "pages": doc.page_count if hasattr(doc, "page_count") else 1}
+    return {"text": text, "pages": page_count}
 
 
 @app.post("/analyze-only")
