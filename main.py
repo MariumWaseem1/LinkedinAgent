@@ -407,14 +407,17 @@ class ReminderRequest(BaseModel):
 
 
 @app.post("/register")
-async def register(req: LeadRequest):
+async def register(request: Request, req: LeadRequest):
     name = req.name.strip()
     email = req.email.strip()
     if not name:
         raise HTTPException(status_code=400, detail="Name required.")
     if not re.match(r"[^@]+@[^@]+\.[^@]+", email):
         raise HTTPException(status_code=400, detail="Invalid email.")
-    _append_to_sheet([datetime.utcnow().isoformat(), name, email, "", "", "", "", "", "", "", "", "registered"])
+    ip = request.headers.get("x-forwarded-for", request.client.host or "").split(",")[0].strip()
+    ua = request.headers.get("user-agent", "")
+    device = "mobile" if any(x in ua.lower() for x in ["mobile", "android", "iphone"]) else "desktop"
+    _append_to_sheet([datetime.utcnow().isoformat(), name, email, ip, device, "", "", "", "", "", "", "registered"])
     return {"ok": True}
 
 
@@ -531,12 +534,11 @@ async def run_agent(request: Request, req: AgentRequest):
         role     = req.profile_role or "professional"
         industry = req.profile_industry or "business"
 
-        # Phase 2 — fire all 5 tools in parallel, no Claude round-trips
+        # Phase 2 — fire tools in parallel with a hard 8s timeout each
         tool_configs = [
-            ("search_news",              {"query": f"{role} {industry}", "industry": industry}),
-            ("search_web",               {"query": f"LinkedIn thought leaders {role} {industry} 2026"}),
-            ("get_trending_topics",      {"keyword": role, "geo": "GB"}),
-            ("search_reddit",            {"subreddit": "linkedin", "query": f"{role} {industry} tips"}),
+            ("search_news",               {"query": f"{role} {industry}", "industry": industry}),
+            ("search_web",                {"query": f"LinkedIn thought leaders {role} {industry} 2026"}),
+            ("search_reddit",             {"subreddit": "linkedin", "query": f"{role} {industry} tips"}),
             ("analyze_competitor_content", {"role": role, "industry": industry}),
         ]
 
@@ -550,8 +552,18 @@ async def run_agent(request: Request, req: AgentRequest):
             await asyncio.sleep(0.02)
 
         loop = asyncio.get_event_loop()
+
+        async def run_tool_with_timeout(name, inp):
+            try:
+                return await asyncio.wait_for(
+                    loop.run_in_executor(None, dispatch_tool, name, inp),
+                    timeout=8.0,
+                )
+            except asyncio.TimeoutError:
+                return json.dumps({"error": f"{name} timed out"})
+
         raw_results = await asyncio.gather(
-            *[loop.run_in_executor(None, dispatch_tool, name, inp) for name, inp in tool_configs],
+            *[run_tool_with_timeout(name, inp) for name, inp in tool_configs],
             return_exceptions=True,
         )
 
@@ -638,6 +650,7 @@ Return ONLY valid JSON (no markdown, no commentary) in exactly this structure:
 }}
 
 CRITICAL REQUIREMENTS:
+- Be CONCISE. Keep all text fields short (under 15 words per field). The JSON must fit within 8000 tokens.
 - sevenDayPlan MUST have exactly 7 entries (Monday through Sunday)
 - Every sevenDayPlan entry MUST reference actual news or trends from the research data
 - profileScore must be 0-100, brutally honest
@@ -654,7 +667,7 @@ CRITICAL REQUIREMENTS:
         try:
             synth_msg = client.messages.create(
                 model="claude-sonnet-4-6",
-                max_tokens=16000,
+                max_tokens=8000,
                 messages=[{"role": "user", "content": synthesis_prompt}],
             )
             raw = _strip_dashes(synth_msg.content[0].text.strip())
