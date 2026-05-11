@@ -60,18 +60,24 @@ client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
 
 
 def _append_to_sheet(row: list):
-    if not GOOGLE_SHEET_ID or not GOOGLE_SERVICE_ACCOUNT_JSON:
-        logger.info("Google Sheets not configured — skipping write.")
+    if not GOOGLE_SHEET_ID:
+        logger.warning("GOOGLE_SHEET_ID not set — skipping write.")
+        return
+    if not GOOGLE_SERVICE_ACCOUNT_JSON:
+        logger.warning("GOOGLE_SERVICE_ACCOUNT_JSON not set — skipping write.")
         return
     try:
         creds_dict = json.loads(GOOGLE_SERVICE_ACCOUNT_JSON)
-        gc = gspread.service_account_from_dict(creds_dict)
-        gc.open_by_key(GOOGLE_SHEET_ID).sheet1.append_row(
-            [str(v) for v in row], value_input_option="USER_ENTERED"
-        )
-        logger.info("Google Sheets row appended OK.")
+        scopes = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+        creds = Credentials.from_service_account_info(creds_dict, scopes=scopes)
+        gc = gspread.authorize(creds)
+        sheet = gc.open_by_key(GOOGLE_SHEET_ID).sheet1
+        sheet.append_row([str(v) for v in row], value_input_option="USER_ENTERED")
+        logger.info(f"Google Sheets row appended OK: {row[0]}")
+    except json.JSONDecodeError as e:
+        logger.error(f"GOOGLE_SERVICE_ACCOUNT_JSON is not valid JSON: {e}")
     except Exception as e:
-        logger.error(f"Google Sheets write failed: {e}")
+        logger.error(f"Google Sheets write failed: {type(e).__name__}: {e}")
 
 
 # ─── Tool implementations ───────────────────────────────────────────────────

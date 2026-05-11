@@ -430,6 +430,31 @@ hr.div{border:none;border-top:1px solid rgba(37,99,235,.1);margin:1.75rem 0;}
 
 </div><!-- /landing -->
 
+<!-- ══════════ STEP EMAIL ══════════ -->
+<div id="stepEmail" class="hidden fade-in" style="background:linear-gradient(140deg,#EFF6FF 0%,#E8F4FD 45%,#F0EEFF 100%);min-height:100vh;display:flex;flex-direction:column;">
+  <nav class="nav" style="position:relative;z-index:1;">
+    <a href="/"><img src="/logo.png" alt="Rev3" class="logo-img"/></a>
+  </nav>
+  <div style="flex:1;display:flex;align-items:center;justify-content:center;padding:2rem 1rem;position:relative;z-index:1;">
+    <div style="width:100%;max-width:420px;">
+      <div style="font-size:1.5rem;font-weight:700;color:var(--slate-900);letter-spacing:-.02em;margin-bottom:.4rem;">Almost there.</div>
+      <p style="font-size:.9rem;color:var(--slate-500);margin-bottom:1.8rem;line-height:1.65;">Your PDF uploaded. Enter your details so we can save your strategy and send you daily reminders.</p>
+      <div class="glass" style="padding:1.8rem;">
+        <div class="field">
+          <label for="regName">Your name</label>
+          <input class="input" type="text" id="regName" placeholder="Jane Smith" autocomplete="name"/>
+        </div>
+        <div class="field" style="margin-bottom:1.4rem;">
+          <label for="regEmail">Email address</label>
+          <input class="input" type="email" id="regEmail" placeholder="jane@company.com" autocomplete="email"/>
+        </div>
+        <button class="btn" id="regBtn" style="width:100%;">Analyse My Profile →</button>
+        <p id="regErr" style="margin-top:.65rem;font-size:.8rem;color:var(--error);min-height:1rem;"></p>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- ══════════ STEP 2 ══════════ -->
 <div id="step2" class="hidden fade-in">
   <nav class="nav" style="position:relative;z-index:1;">
@@ -579,7 +604,7 @@ hr.div{border:none;border-top:1px solid rgba(37,99,235,.1);margin:1.75rem 0;}
 let profileText = '', analysisData = null, selectedAudience = null, fullStrategy = null;
 let userName = '', userEmail = '';
 
-const ALL_VIEWS = '#landing,#step2,#stepAgent,#step3,#errorContainer';
+const ALL_VIEWS = '#landing,#stepEmail,#step2,#stepAgent,#step3,#errorContainer';
 
 function show(id) {
   document.querySelectorAll(ALL_VIEWS).forEach(el => el.classList.add('hidden'));
@@ -619,14 +644,37 @@ async function handleFile(file) {
   if (!file.name.toLowerCase().endsWith('.pdf')) {
     setStatus('<span style="color:rgba(255,255,255,.8)">Only PDF files accepted.</span>'); return;
   }
-  setStatus('<span class="spinner" style="border-top-color:#fff;border-color:rgba(255,255,255,.3);border-top-color:#fff"></span> <span style="color:#fff">Uploading...</span>');
+  setStatus('<span class="spinner" style="border-color:rgba(255,255,255,.3);border-top-color:#fff"></span> <span style="color:#fff">Uploading...</span>');
   const fd = new FormData(); fd.append('file', file);
   try {
     const r = await fetch('/upload', { method: 'POST', body: fd });
     const d = await r.json().catch(() => ({}));
     if (!r.ok) throw new Error(d.detail || `Upload failed (${r.status})`);
     profileText = d.text;
-    setStatus('<span class="spinner" style="border-color:rgba(255,255,255,.3);border-top-color:#fff"></span> <span style="color:#fff">Analysing your profile...</span>');
+    setStatus('');
+    show('stepEmail');
+  } catch (err) {
+    setStatus(`<span style="color:#fca5a5">${esc(err.message)}</span>`);
+  }
+}
+function setStatus(html) { uploadStatus.innerHTML = html; }
+
+// Email step → register → analyse
+document.getElementById('regBtn').addEventListener('click', async () => {
+  const name  = document.getElementById('regName').value.trim();
+  const email = document.getElementById('regEmail').value.trim();
+  const errEl = document.getElementById('regErr');
+  const btn   = document.getElementById('regBtn');
+  errEl.textContent = '';
+  if (!name)                { errEl.textContent = 'Please enter your name.'; return; }
+  if (!email.includes('@')) { errEl.textContent = 'Please enter a valid email.'; return; }
+  userName = name; userEmail = email;
+  btn.disabled = true; btn.textContent = 'Analysing your profile...';
+  try {
+    await fetch('/register', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, email }),
+    }).catch(() => {});
     const ar = await fetch('/analyze-only', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ profile_text: profileText }),
@@ -637,10 +685,13 @@ async function handleFile(file) {
     renderStep2(ad);
     show('step2');
   } catch (err) {
-    setStatus(`<span style="color:#fca5a5">${esc(err.message)}</span>`);
+    errEl.textContent = err.message;
+    btn.disabled = false; btn.textContent = 'Analyse My Profile →';
   }
-}
-function setStatus(html) { uploadStatus.innerHTML = html; }
+});
+['regName','regEmail'].forEach(id =>
+  document.getElementById(id).addEventListener('keydown', e => { if (e.key === 'Enter') document.getElementById('regBtn').click(); })
+);
 
 // Step 2
 function renderStep2(d) {
@@ -801,7 +852,13 @@ document.querySelectorAll('.tab-btn').forEach(btn => btn.addEventListener('click
 // Start again
 document.getElementById('startAgainBtn').addEventListener('click', () => {
   profileText = ''; analysisData = null; selectedAudience = null; fullStrategy = null;
+  userName = ''; userEmail = '';
   fileInput.value = ''; uploadStatus.innerHTML = '';
+  document.getElementById('regName').value = '';
+  document.getElementById('regEmail').value = '';
+  document.getElementById('regErr').textContent = '';
+  document.getElementById('regBtn').disabled = false;
+  document.getElementById('regBtn').textContent = 'Analyse My Profile →';
   show('landing');
 });
 
