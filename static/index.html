@@ -386,7 +386,7 @@ hr.div{border:none;border-top:1px solid rgba(37,99,235,.1);margin:1.75rem 0;}
   <div class="s1-body">
     <div class="upload-wrap">
       <h2 id="uploadGreeting">Now upload your LinkedIn PDF</h2>
-      <p class="sub">Go to your LinkedIn profile &rarr; More &rarr; Save to PDF, then upload below.</p>
+      <p class="sub">1. Go to your profile &nbsp;&middot;&nbsp; 2. Click <strong>Resources</strong> &nbsp;&middot;&nbsp; 3. Save to PDF &nbsp;&middot;&nbsp; Then upload below.</p>
 
       <div class="upload-zone" id="uploadZone">
         <input type="file" accept=".pdf" id="fileInput"/>
@@ -542,6 +542,17 @@ hr.div{border:none;border-top:1px solid rgba(37,99,235,.1);margin:1.75rem 0;}
         </table>
       </div>
       <button class="btn" id="copyPlanBtn">Copy Full Plan</button>
+
+      <div class="card" style="margin-top:1.5rem;display:flex;align-items:flex-start;gap:1.4rem;flex-wrap:wrap;">
+        <div style="flex:1;min-width:220px;">
+          <div style="font-size:1rem;font-weight:700;color:var(--slate-900);margin-bottom:.3rem;">Get daily reminders</div>
+          <p style="font-size:.84rem;color:var(--slate-500);line-height:1.6;margin-bottom:0;">We'll email you each morning with that day's plan - Day 1 lands in your inbox right now.</p>
+        </div>
+        <div style="display:flex;flex-direction:column;align-items:flex-start;gap:.5rem;">
+          <button class="btn" id="reminderBtn">Send me daily reminders</button>
+          <p id="reminderStatus" style="font-size:.8rem;min-height:1rem;margin:0;"></p>
+        </div>
+      </div>
     </div>
 
     <!-- OVERVIEW -->
@@ -955,6 +966,37 @@ document.getElementById('shareBtn').addEventListener('click', () => {
     document.getElementById('shareBtn').textContent = 'Copied!';
     setTimeout(() => { document.getElementById('shareBtn').textContent = 'Share REV3'; }, 2500);
   });
+});
+
+// ── Daily Reminders ────────────────────────────────
+document.getElementById('reminderBtn').addEventListener('click', async () => {
+  const statusEl = document.getElementById('reminderStatus');
+  const btn = document.getElementById('reminderBtn');
+  if (!userEmail) {
+    statusEl.style.color = 'var(--error)';
+    statusEl.textContent = 'Please go back and enter your email first.';
+    return;
+  }
+  btn.disabled = true;
+  btn.textContent = 'Sending Day 1...';
+  statusEl.textContent = '';
+  try {
+    const r = await fetch('/schedule-reminders', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: userName, email: userEmail, plan: fullStrategy?.sevenDayPlan || [] }),
+    });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(d.detail || 'Something went wrong');
+    statusEl.style.color = 'var(--success)';
+    statusEl.textContent = d.message || 'Day 1 sent! Check your inbox.';
+    btn.textContent = 'Reminders scheduled';
+  } catch (e) {
+    btn.disabled = false;
+    btn.textContent = 'Send me daily reminders';
+    statusEl.style.color = 'var(--error)';
+    statusEl.textContent = e.message;
+  }
 });
 
 // ── Error ──────────────────────────────────────────

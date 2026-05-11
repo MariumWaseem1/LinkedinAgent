@@ -50,6 +50,11 @@ NEWS_API_KEY = os.environ.get("NEWS_API_KEY", "")
 TAVILY_API_KEY = os.environ.get("TAVILY_API_KEY", "")
 GOOGLE_SHEET_ID = os.environ.get("GOOGLE_SHEET_ID", "")
 GOOGLE_SERVICE_ACCOUNT_JSON = os.environ.get("GOOGLE_SERVICE_ACCOUNT_JSON", "")
+RESEND_API_KEY = os.environ.get("RESEND_API_KEY", "")
+RESEND_FROM_EMAIL = os.environ.get("RESEND_FROM_EMAIL", "REV3 <noreply@rev3.ai>")
+
+# In-memory reminder store: email -> {name, plan, start_date, days_sent}
+_reminders: dict[str, dict] = {}
 
 client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
 
@@ -285,6 +290,79 @@ def dispatch_tool(tool_name: str, tool_input: dict) -> str:
     return json.dumps(result)
 
 
+# ─── Email reminders ─────────────────────────────────────────────────────────
+
+async def _send_day_email(name: str, email: str, day_data: dict, day_num: int):
+    if not RESEND_API_KEY:
+        logger.info("RESEND_API_KEY not set — skipping email.")
+        return
+    day_label = day_data.get("day", f"Day {day_num}")
+    topic = day_data.get("topic", "")
+    hook = day_data.get("hook", "")
+    post_type = day_data.get("postType", "")
+    trending = day_data.get("trendingAngle", "")
+    why = day_data.get("whyThisWorks", "")
+    html_body = f"""
+<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:560px;margin:0 auto;color:#0F172A;">
+  <div style="background:linear-gradient(135deg,#2563EB,#1D4ED8);padding:28px 32px;border-radius:16px 16px 0 0;">
+    <div style="font-size:22px;font-weight:700;color:#fff;letter-spacing:-.02em;">REV3 Daily Plan</div>
+    <div style="font-size:14px;color:rgba(255,255,255,.75);margin-top:4px;">Day {day_num} of 7 — {day_label}</div>
+  </div>
+  <div style="background:#fff;padding:28px 32px;border-radius:0 0 16px 16px;border:1px solid #E2E8F0;border-top:none;">
+    <p style="font-size:15px;margin-bottom:20px;">Hi {name}, here's your LinkedIn action for today.</p>
+    <div style="background:#EFF6FF;border-left:4px solid #2563EB;border-radius:0 10px 10px 0;padding:14px 18px;margin-bottom:20px;">
+      <div style="font-size:11px;font-weight:700;color:#2563EB;text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px;">{post_type}</div>
+      <div style="font-size:17px;font-weight:700;color:#0F172A;margin-bottom:8px;">{topic}</div>
+      <div style="font-size:14px;color:#475569;font-style:italic;">"{hook}"</div>
+    </div>
+    {"<div style='background:#F0FDF4;border-radius:10px;padding:12px 16px;margin-bottom:16px;font-size:13px;color:#166534;'><b>Trending angle:</b> " + trending + "</div>" if trending else ""}
+    <div style="font-size:13px;color:#64748B;line-height:1.6;"><b>Why this works:</b> {why}</div>
+    <hr style="border:none;border-top:1px solid #E2E8F0;margin:24px 0;"/>
+    <p style="font-size:12px;color:#94A3B8;text-align:center;">You're receiving this because you scheduled REV3 daily reminders. {day_num} of 7 done.</p>
+  </div>
+</div>"""
+    try:
+        async with httpx.AsyncClient() as c:
+            resp = await c.post(
+                "https://api.resend.com/emails",
+                headers={"Authorization": f"Bearer {RESEND_API_KEY}", "Content-Type": "application/json"},
+                json={
+                    "from": RESEND_FROM_EMAIL,
+                    "to": [email],
+                    "subject": f"Day {day_num}: {topic} | Your REV3 LinkedIn Plan",
+                    "html": html_body,
+                },
+                timeout=15,
+            )
+            if resp.status_code >= 400:
+                logger.error(f"Resend error {resp.status_code}: {resp.text}")
+            else:
+                logger.info(f"Day {day_num} email sent to {email}")
+    except Exception as e:
+        logger.error(f"Email send failed: {e}")
+
+
+async def _reminder_loop():
+    while True:
+        await asyncio.sleep(3600)  # check hourly
+        now = datetime.utcnow()
+        for email, data in list(_reminders.items()):
+            try:
+                days_elapsed = (now - data["start_date"]).total_seconds() / 86400
+                target_sent = min(int(days_elapsed) + 1, len(data["plan"]))
+                while data["days_sent"] < target_sent:
+                    idx = data["days_sent"]
+                    await _send_day_email(data["name"], email, data["plan"][idx], idx + 1)
+                    data["days_sent"] += 1
+            except Exception as e:
+                logger.error(f"Reminder loop error for {email}: {e}")
+
+
+@app.on_event("startup")
+async def start_reminder_scheduler():
+    asyncio.create_task(_reminder_loop())
+
+
 # ─── Endpoints ───────────────────────────────────────────────────────────────
 
 def _strip_dashes(text: str) -> str:
@@ -322,6 +400,12 @@ class ResultsRequest(BaseModel):
     competitive_edge: str
 
 
+class ReminderRequest(BaseModel):
+    name: str
+    email: str
+    plan: list[dict]
+
+
 @app.post("/register")
 async def register(req: LeadRequest):
     name = req.name.strip()
@@ -352,6 +436,22 @@ async def save_results(req: ResultsRequest):
         "completed",
     ])
     return {"ok": True}
+
+
+@app.post("/schedule-reminders")
+async def schedule_reminders(req: ReminderRequest):
+    email = req.email.strip()
+    if not req.plan:
+        raise HTTPException(status_code=400, detail="No plan provided.")
+    _reminders[email] = {
+        "name": req.name,
+        "plan": req.plan,
+        "start_date": datetime.utcnow(),
+        "days_sent": 0,
+    }
+    await _send_day_email(req.name, email, req.plan[0], 1)
+    _reminders[email]["days_sent"] = 1
+    return {"ok": True, "message": "Day 1 sent! Check your inbox. Days 2-7 will arrive each morning."}
 
 
 @app.post("/upload")
@@ -398,10 +498,10 @@ async def analyze_only(req: AnalyzeRequest):
     )
     try:
         msg = client.messages.create(
-            model="claude-sonnet-4-6",
-            max_tokens=2000,
+            model="claude-haiku-4-5-20251001",
+            max_tokens=1000,
             system=system,
-            messages=[{"role": "user", "content": f"Profile text:\n\n{req.profile_text[:8000]}"}],
+            messages=[{"role": "user", "content": f"Profile text:\n\n{req.profile_text[:4000]}"}],
         )
         raw = _strip_dashes(msg.content[0].text.strip())
         if raw.startswith("```"):
