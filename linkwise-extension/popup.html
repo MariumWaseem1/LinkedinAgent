@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <title>Linkwise by REV3</title>
+  <link rel="stylesheet" href="popup.css"/>
+</head>
+<body>
+
+  <!-- Header (always visible) -->
+  <div class="header">
+    <span class="header-logo">Linkwise</span>
+    <span class="header-sub">by REV3</span>
+  </div>
+  <div class="header-divider"></div>
+
+  <!-- STATE 1: Not on LinkedIn profile -->
+  <div id="state1" class="state">
+    <div class="s1-icon">
+      <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
+        <rect width="48" height="48" rx="8" fill="#f1f5f9"/>
+        <text x="50%" y="55%" dominant-baseline="middle" text-anchor="middle" font-size="26" fill="#94a3b8">in</text>
+      </svg>
+    </div>
+    <div class="s1-heading">Go to your LinkedIn profile</div>
+    <p class="s1-sub">Navigate to your LinkedIn profile to analyse it with Linkwise.</p>
+    <button class="btn" id="openLinkedInBtn">Open My LinkedIn Profile</button>
+  </div>
+
+  <!-- STATE 2: On LinkedIn profile, ready -->
+  <div id="state2" class="state">
+    <div class="detected-row">
+      <div class="dot-green"></div>
+      <span class="detected-label">LinkedIn profile detected</span>
+    </div>
+    <div class="tab-url" id="tabUrl"></div>
+    <div class="s2-heading">Ready to analyse</div>
+    <ul class="feature-list">
+      <li><span class="check">&#10003;</span> Profile score and analysis</li>
+      <li><span class="check">&#10003;</span> 7-day content plan</li>
+      <li><span class="check">&#10003;</span> Live market intelligence</li>
+      <li><span class="check">&#10003;</span> Dos and don'ts</li>
+      <li><span class="check">&#10003;</span> Profile fixes</li>
+      <li><span class="check">&#10003;</span> 6-month roadmap</li>
+    </ul>
+    <button class="btn" id="analyseBtn">Analyse My Profile</button>
+    <p class="btn-note">Your data is never stored</p>
+  </div>
+
+  <!-- STATE 3: Extracting -->
+  <div id="state3" class="state">
+    <div class="spinner-wrap"><div class="spinner"></div></div>
+    <div class="s3-heading">Reading your profile...</div>
+    <p class="s3-sub">This takes just a second.</p>
+  </div>
+
+  <!-- STATE 4: Sending -->
+  <div id="state4" class="state">
+    <div class="spinner-wrap"><div class="spinner"></div></div>
+    <div class="s4-heading">Profile read successfully</div>
+    <div class="progress-wrap"><div class="progress-bar" id="progressBar"></div></div>
+    <p class="s4-sub">Sending to REV3 agent...</p>
+  </div>
+
+  <!-- STATE 5: Success -->
+  <div id="state5" class="state">
+    <div class="success-wrap">
+      <div class="success-circle">&#10003;</div>
+    </div>
+    <div class="s5-heading">Profile extracted</div>
+    <p class="s5-sub">Opening your strategy now...</p>
+  </div>
+
+  <!-- STATE 6: Error -->
+  <div id="state6" class="state">
+    <div class="error-wrap">
+      <div class="error-circle">&#10007;</div>
+    </div>
+    <div class="s6-heading">Something went wrong</div>
+    <p class="s6-msg" id="errorMsg"></p>
+    <button class="btn" id="retryBtn">Try Again</button>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
