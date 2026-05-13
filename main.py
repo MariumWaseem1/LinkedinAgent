@@ -384,6 +384,10 @@ class AnalyzeRequest(BaseModel):
     profile_text: str
 
 
+class UploadTextRequest(BaseModel):
+    profile_text: str
+
+
 class AgentRequest(BaseModel):
     profile_text: str
     audience_label: str
@@ -481,6 +485,17 @@ async def upload_pdf(file: UploadFile = File(...)):
     if len(text) < 100:
         raise HTTPException(status_code=400, detail="PDF too short or not a LinkedIn export.")
     return {"text": text, "pages": page_count}
+
+
+@app.post("/upload-text")
+async def upload_text(req: UploadTextRequest):
+    text = req.profile_text.strip()
+    if len(text) < 100:
+        raise HTTPException(
+            status_code=400,
+            detail="Profile text too short. Make sure you are on your full LinkedIn profile page.",
+        )
+    return {"success": True, "profile_text": text}
 
 
 @app.post("/analyze-only")
