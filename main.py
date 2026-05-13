@@ -1,4 +1,5 @@
 import os
+import re
 import json
 import time
 import asyncio
@@ -11,6 +12,8 @@ import fitz
 import requests
 import httpx
 import anthropic
+import gspread
+from google.oauth2.service_account import Credentials
 from fastapi import FastAPI, UploadFile, File, HTTPException, Request
 from fastapi.responses import StreamingResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -45,8 +48,36 @@ def check_rate_limit(ip: str) -> bool:
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
 NEWS_API_KEY = os.environ.get("NEWS_API_KEY", "")
 TAVILY_API_KEY = os.environ.get("TAVILY_API_KEY", "")
+GOOGLE_SHEET_ID = os.environ.get("GOOGLE_SHEET_ID", "")
+GOOGLE_SERVICE_ACCOUNT_JSON = os.environ.get("GOOGLE_SERVICE_ACCOUNT_JSON", "")
+RESEND_API_KEY = os.environ.get("RESEND_API_KEY", "")
+RESEND_FROM_EMAIL = os.environ.get("RESEND_FROM_EMAIL", "REV3 <noreply@rev3.ai>")
+
+# In-memory reminder store: email -> {name, plan, start_date, days_sent}
+_reminders: dict[str, dict] = {}
 
 client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+
+
+def _append_to_sheet(row: list):
+    if not GOOGLE_SHEET_ID:
+        logger.warning("GOOGLE_SHEET_ID not set — skipping write.")
+        return
+    if not GOOGLE_SERVICE_ACCOUNT_JSON:
+        logger.warning("GOOGLE_SERVICE_ACCOUNT_JSON not set — skipping write.")
+        return
+    try:
+        creds_dict = json.loads(GOOGLE_SERVICE_ACCOUNT_JSON)
+        scopes = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+        creds = Credentials.from_service_account_info(creds_dict, scopes=scopes)
+        gc = gspread.authorize(creds)
+        sheet = gc.open_by_key(GOOGLE_SHEET_ID).sheet1
+        sheet.append_row([str(v) for v in row], value_input_option="USER_ENTERED")
+        logger.info(f"Google Sheets row appended OK: {row[0]}")
+    except json.JSONDecodeError as e:
+        logger.error(f"GOOGLE_SERVICE_ACCOUNT_JSON is not valid JSON: {e}")
+    except Exception as e:
+        logger.error(f"Google Sheets write failed: {type(e).__name__}: {e}")
 
 
 # ─── Tool implementations ───────────────────────────────────────────────────
@@ -142,6 +173,7 @@ def search_reddit(subreddit: str, query: str) -> list[dict]:
                 "selftext": p["data"].get("selftext", "")[:300],
                 "score": p["data"].get("score", 0),
                 "num_comments": p["data"].get("num_comments", 0),
+                "url": "https://www.reddit.com" + p["data"].get("permalink", ""),
             }
             for p in posts
         ]
@@ -160,6 +192,7 @@ def analyze_competitor_content(role: str, industry: str) -> list[dict]:
                     "topic": r.get("title", ""),
                     "engagement_signal": r.get("content", "")[:200],
                     "gap_opportunity": f"Underexplored angle in: {r.get('title', '')}",
+                    "url": r.get("url", ""),
                 }
             )
         return output
@@ -263,9 +296,95 @@ def dispatch_tool(tool_name: str, tool_input: dict) -> str:
     return json.dumps(result)
 
 
+# ─── Email reminders ─────────────────────────────────────────────────────────
+
+async def _send_day_email(name: str, email: str, day_data: dict, day_num: int):
+    if not RESEND_API_KEY:
+        logger.info("RESEND_API_KEY not set — skipping email.")
+        return
+    day_label = day_data.get("day", f"Day {day_num}")
+    topic = day_data.get("topic", "")
+    hook = day_data.get("hook", "")
+    post_type = day_data.get("postType", "")
+    trending = day_data.get("trendingAngle", "")
+    why = day_data.get("whyThisWorks", "")
+    html_body = f"""
+<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:560px;margin:0 auto;color:#0F172A;">
+  <div style="background:linear-gradient(135deg,#2563EB,#1D4ED8);padding:28px 32px;border-radius:16px 16px 0 0;">
+    <div style="font-size:22px;font-weight:700;color:#fff;letter-spacing:-.02em;">REV3 Daily Plan</div>
+    <div style="font-size:14px;color:rgba(255,255,255,.75);margin-top:4px;">Day {day_num} of 7 — {day_label}</div>
+  </div>
+  <div style="background:#fff;padding:28px 32px;border-radius:0 0 16px 16px;border:1px solid #E2E8F0;border-top:none;">
+    <p style="font-size:15px;margin-bottom:20px;">Hi {name}, here's your LinkedIn action for today.</p>
+    <div style="background:#EFF6FF;border-left:4px solid #2563EB;border-radius:0 10px 10px 0;padding:14px 18px;margin-bottom:20px;">
+      <div style="font-size:11px;font-weight:700;color:#2563EB;text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px;">{post_type}</div>
+      <div style="font-size:17px;font-weight:700;color:#0F172A;margin-bottom:8px;">{topic}</div>
+      <div style="font-size:14px;color:#475569;font-style:italic;">"{hook}"</div>
+    </div>
+    {"<div style='background:#F0FDF4;border-radius:10px;padding:12px 16px;margin-bottom:16px;font-size:13px;color:#166534;'><b>Trending angle:</b> " + trending + "</div>" if trending else ""}
+    <div style="font-size:13px;color:#64748B;line-height:1.6;"><b>Why this works:</b> {why}</div>
+    <hr style="border:none;border-top:1px solid #E2E8F0;margin:24px 0;"/>
+    <p style="font-size:12px;color:#94A3B8;text-align:center;">You're receiving this because you scheduled REV3 daily reminders. {day_num} of 7 done.</p>
+  </div>
+</div>"""
+    try:
+        async with httpx.AsyncClient() as c:
+            resp = await c.post(
+                "https://api.resend.com/emails",
+                headers={"Authorization": f"Bearer {RESEND_API_KEY}", "Content-Type": "application/json"},
+                json={
+                    "from": RESEND_FROM_EMAIL,
+                    "to": [email],
+                    "subject": f"Day {day_num}: {topic} | Your REV3 LinkedIn Plan",
+                    "html": html_body,
+                },
+                timeout=15,
+            )
+            if resp.status_code >= 400:
+                logger.error(f"Resend error {resp.status_code}: {resp.text}")
+            else:
+                logger.info(f"Day {day_num} email sent to {email}")
+    except Exception as e:
+        logger.error(f"Email send failed: {e}")
+
+
+async def _reminder_loop():
+    while True:
+        await asyncio.sleep(3600)  # check hourly
+        now = datetime.utcnow()
+        for email, data in list(_reminders.items()):
+            try:
+                days_elapsed = (now - data["start_date"]).total_seconds() / 86400
+                target_sent = min(int(days_elapsed) + 1, len(data["plan"]))
+                while data["days_sent"] < target_sent:
+                    idx = data["days_sent"]
+                    await _send_day_email(data["name"], email, data["plan"][idx], idx + 1)
+                    data["days_sent"] += 1
+            except Exception as e:
+                logger.error(f"Reminder loop error for {email}: {e}")
+
+
+@app.on_event("startup")
+async def start_reminder_scheduler():
+    asyncio.create_task(_reminder_loop())
+
+
 # ─── Endpoints ───────────────────────────────────────────────────────────────
 
+def _strip_dashes(text: str) -> str:
+    return text.replace("—", "-").replace("–", "-")
+
+
+class LeadRequest(BaseModel):
+    name: str
+    email: str
+
+
 class AnalyzeRequest(BaseModel):
+    profile_text: str
+
+
+class UploadTextRequest(BaseModel):
     profile_text: str
 
 
@@ -273,6 +392,79 @@ class AgentRequest(BaseModel):
     profile_text: str
     audience_label: str
     audience_description: str
+    profile_role: str = ""
+    profile_industry: str = ""
+
+
+class ResultsRequest(BaseModel):
+    name: str
+    email: str
+    profile_name: str
+    current_role: str
+    industry: str
+    profile_score: int
+    audience: str
+    content_pillars: list[str]
+    seven_day_topics: list[str]
+    key_gaps: list[str]
+    competitive_edge: str
+
+
+class ReminderRequest(BaseModel):
+    name: str
+    email: str
+    plan: list[dict]
+
+
+@app.post("/register")
+async def register(request: Request, req: LeadRequest):
+    name = req.name.strip()
+    email = req.email.strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="Name required.")
+    if not re.match(r"[^@]+@[^@]+\.[^@]+", email):
+        raise HTTPException(status_code=400, detail="Invalid email.")
+    ip = request.headers.get("x-forwarded-for", request.client.host or "").split(",")[0].strip()
+    ua = request.headers.get("user-agent", "")
+    device = "mobile" if any(x in ua.lower() for x in ["mobile", "android", "iphone"]) else "desktop"
+    _append_to_sheet([datetime.utcnow().isoformat(), name, email, ip, device, "", "", "", "", "", "", "registered"])
+    return {"ok": True}
+
+
+@app.post("/save-results")
+async def save_results(req: ResultsRequest):
+    _append_to_sheet([
+        datetime.utcnow().isoformat(),
+        req.name,
+        req.email,
+        req.profile_name,
+        req.current_role,
+        req.industry,
+        req.profile_score,
+        req.audience,
+        " | ".join(req.content_pillars),
+        " | ".join(req.seven_day_topics),
+        " | ".join(req.key_gaps),
+        req.competitive_edge,
+        "completed",
+    ])
+    return {"ok": True}
+
+
+@app.post("/schedule-reminders")
+async def schedule_reminders(req: ReminderRequest):
+    email = req.email.strip()
+    if not req.plan:
+        raise HTTPException(status_code=400, detail="No plan provided.")
+    _reminders[email] = {
+        "name": req.name,
+        "plan": req.plan,
+        "start_date": datetime.utcnow(),
+        "days_sent": 0,
+    }
+    await _send_day_email(req.name, email, req.plan[0], 1)
+    _reminders[email]["days_sent"] = 1
+    return {"ok": True, "message": "Day 1 sent! Check your inbox. Days 2-7 will arrive each morning."}
 
 
 @app.post("/upload")
@@ -285,44 +477,57 @@ async def upload_pdf(file: UploadFile = File(...)):
         text = ""
         for page in doc:
             text += page.get_text()
+        page_count = doc.page_count
         doc.close()
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Could not parse PDF: {e}")
     text = text.strip()
     if len(text) < 100:
         raise HTTPException(status_code=400, detail="PDF too short or not a LinkedIn export.")
-    return {"text": text, "pages": doc.page_count if hasattr(doc, "page_count") else 1}
+    return {"text": text, "pages": page_count}
+
+
+@app.post("/upload-text")
+async def upload_text(req: UploadTextRequest):
+    text = req.profile_text.strip()
+    if len(text) < 100:
+        raise HTTPException(
+            status_code=400,
+            detail="Profile text too short. Make sure you are on your full LinkedIn profile page.",
+        )
+    return {"success": True, "profile_text": text}
 
 
 @app.post("/analyze-only")
 async def analyze_only(req: AnalyzeRequest):
     system = (
-        "You are a sharp LinkedIn strategist. Analyze this profile and return JSON:\n"
+        "You are a sharp LinkedIn strategist. Analyze this profile and return JSON.\n"
+        "Be brutally honest with scores. Keep ALL text fields SHORT - see limits below.\n\n"
         "{\n"
-        '  "name": "",\n'
-        '  "currentRole": "",\n'
-        '  "industry": "",\n'
+        '  "name": "Full name only",\n'
+        '  "currentRole": "Job title only, max 6 words",\n'
+        '  "industry": "One or two words e.g. SaaS, Finance",\n'
         '  "profileScore": 0,\n'
         '  "scoreBreakdown": { "headline": 0, "about": 0, "experience": 0, "skills": 0, "completeness": 0 },\n'
-        '  "topStrengths": ["", "", ""],\n'
-        '  "keyGaps": ["", "", ""],\n'
-        '  "firstImpression": "",\n'
-        '  "competitiveEdge": "",\n'
-        '  "hiddenOpportunities": ["", "", ""],\n'
+        '  "topStrengths": ["max 8 words each", "", ""],\n'
+        '  "keyGaps": ["max 8 words each", "", ""],\n'
+        '  "firstImpression": "One sentence, max 15 words. What a stranger thinks in 8 seconds.",\n'
+        '  "competitiveEdge": "One sentence, max 15 words. The one thing that sets them apart.",\n'
+        '  "hiddenOpportunities": ["max 10 words each", "", ""],\n'
         '  "suggestedAudiences": [\n'
-        '    { "label": "", "description": "", "icon": "", "whyThisAudience": "" }\n'
+        '    { "label": "2-4 words", "description": "max 10 words", "icon": "", "whyThisAudience": "max 12 words" }\n'
         '  ]\n'
         "}\n"
-        "Return only valid JSON. No markdown. Be brutally honest with scores."
+        "Return only valid JSON. No markdown. No em dashes."
     )
     try:
         msg = client.messages.create(
-            model="claude-sonnet-4-6",
-            max_tokens=2000,
+            model="claude-haiku-4-5-20251001",
+            max_tokens=1000,
             system=system,
-            messages=[{"role": "user", "content": f"Profile text:\n\n{req.profile_text[:8000]}"}],
+            messages=[{"role": "user", "content": f"Profile text:\n\n{req.profile_text[:4000]}"}],
         )
-        raw = msg.content[0].text.strip()
+        raw = _strip_dashes(msg.content[0].text.strip())
         if raw.startswith("```"):
             raw = raw.split("```")[1]
             if raw.startswith("json"):
@@ -342,137 +547,57 @@ async def run_agent(request: Request, req: AgentRequest):
         def sse(data: dict) -> str:
             return f"data: {json.dumps(data)}\n\n"
 
-        research_log: list[dict] = []
-
         # Phase 1
         yield sse({"stage": "profile", "message": "Reading your profile. Give me a sec."})
         await asyncio.sleep(0.1)
 
         profile_summary = req.profile_text[:6000]
+        role     = req.profile_role or "professional"
+        industry = req.profile_industry or "business"
 
-        # Phase 2 — agentic loop
-        system_research = (
-            "You are REV3, a sharp AI LinkedIn strategist with a London attitude. "
-            "You have access to tools for searching live news, web content, Google Trends, "
-            "Reddit and competitor analysis. You MUST call ALL FIVE tools at least once "
-            "to build a comprehensive research base. Be thorough. Search the actual industry "
-            "of this person, their role keywords, and topics relevant to their target audience. "
-            "Use first-person when describing findings."
-        )
+        # Phase 2 — fire tools in parallel with a hard 8s timeout each
+        tool_configs = [
+            ("search_news",               {"query": f"{role} {industry}", "industry": industry}),
+            ("search_web",                {"query": f"LinkedIn thought leaders {role} {industry} 2026"}),
+            ("search_reddit",             {"subreddit": "linkedin", "query": f"{role} {industry} tips"}),
+            ("analyze_competitor_content", {"role": role, "industry": industry}),
+        ]
 
-        user_research_msg = (
-            f"Research for this LinkedIn profile:\n\n{profile_summary}\n\n"
-            f"Target audience: {req.audience_label} — {req.audience_description}\n\n"
-            "Use ALL five tools to gather:\n"
-            "1. Latest industry news (search_news)\n"
-            "2. Thought leaders and competitor content (search_web + analyze_competitor_content)\n"
-            "3. Trending topics UK (get_trending_topics)\n"
-            "4. Audience pain points (search_reddit)\n"
-            "Gather as much real, current data as possible."
-        )
+        for tool_name, _ in tool_configs:
+            yield sse({
+                "stage": "research",
+                "tool": tool_name,
+                "source": TOOL_SOURCE_LABELS.get(tool_name, tool_name),
+                "message": TOOL_MESSAGES.get(tool_name, f"Running {tool_name}..."),
+            })
+            await asyncio.sleep(0.02)
 
-        messages = [{"role": "user", "content": user_research_msg}]
-        tool_results_for_synthesis: list[dict] = []
+        loop = asyncio.get_event_loop()
 
-        max_iterations = 15
-        iteration = 0
-
-        while iteration < max_iterations:
-            iteration += 1
+        async def run_tool_with_timeout(name, inp):
             try:
-                response = client.messages.create(
-                    model="claude-sonnet-4-6",
-                    max_tokens=4096,
-                    system=system_research,
-                    tools=TOOL_DEFINITIONS,
-                    messages=messages,
+                return await asyncio.wait_for(
+                    loop.run_in_executor(None, dispatch_tool, name, inp),
+                    timeout=8.0,
                 )
-            except Exception as e:
-                yield sse({"stage": "error", "message": f"Agent error: {e}"})
-                return
+            except asyncio.TimeoutError:
+                return json.dumps({"error": f"{name} timed out"})
 
-            # Collect assistant message content
-            assistant_content = []
-            for block in response.content:
-                if hasattr(block, "text"):
-                    assistant_content.append({"type": "text", "text": block.text})
-                elif block.type == "tool_use":
-                    assistant_content.append({
-                        "type": "tool_use",
-                        "id": block.id,
-                        "name": block.name,
-                        "input": block.input,
-                    })
+        raw_results = await asyncio.gather(
+            *[run_tool_with_timeout(name, inp) for name, inp in tool_configs],
+            return_exceptions=True,
+        )
 
-            messages.append({"role": "assistant", "content": assistant_content})
-
-            if response.stop_reason == "end_turn":
-                break
-
-            if response.stop_reason == "tool_use":
-                tool_results = []
-                for block in response.content:
-                    if block.type != "tool_use":
-                        continue
-                    tool_name = block.name
-                    tool_input = block.input
-
-                    msg_text = TOOL_MESSAGES.get(tool_name, f"Running {tool_name}...")
-                    source_label = TOOL_SOURCE_LABELS.get(tool_name, tool_name)
-                    yield sse({
-                        "stage": "research",
-                        "tool": tool_name,
-                        "source": source_label,
-                        "message": msg_text,
-                    })
-                    await asyncio.sleep(0.05)
-
-                    try:
-                        result_str = await asyncio.get_event_loop().run_in_executor(
-                            None, dispatch_tool, tool_name, tool_input
-                        )
-                        result_data = json.loads(result_str)
-                        log_entry = {
-                            "tool": tool_name,
-                            "query": str(tool_input),
-                            "insight": (
-                                result_data[0].get("title", str(result_data)[:100])
-                                if isinstance(result_data, list) and result_data
-                                else str(result_data)[:200]
-                            ),
-                            "status": "success",
-                        }
-                    except Exception as e:
-                        result_str = json.dumps({"error": str(e)})
-                        log_entry = {
-                            "tool": tool_name,
-                            "query": str(tool_input),
-                            "insight": f"Tool failed: {e}",
-                            "status": "failed",
-                        }
-
-                    research_log.append(log_entry)
-                    tool_results_for_synthesis.append({
-                        "tool": tool_name,
-                        "input": tool_input,
-                        "result": result_str,
-                    })
-
-                    tool_results.append({
-                        "type": "tool_result",
-                        "tool_use_id": block.id,
-                        "content": result_str,
-                    })
-
-                messages.append({"role": "user", "content": tool_results})
-            else:
-                break
+        tool_results_for_synthesis: list[dict] = []
+        for (tool_name, tool_input), raw in zip(tool_configs, raw_results):
+            result_str = json.dumps({"error": str(raw)}) if isinstance(raw, Exception) else raw
+            tool_results_for_synthesis.append({"tool": tool_name, "input": tool_input, "result": result_str})
 
         # Phase 3 — synthesis
         yield sse({"stage": "synthesis", "message": "Connecting the dots. Nearly there."})
         await asyncio.sleep(0.1)
 
-        research_dump = json.dumps(tool_results_for_synthesis, indent=2)[:12000]
+        research_dump = json.dumps(tool_results_for_synthesis, indent=2)[:6000]
 
         synthesis_prompt = f"""You are REV3, an elite LinkedIn brand strategist with a London attitude.
 
@@ -502,16 +627,16 @@ Return ONLY valid JSON (no markdown, no commentary) in exactly this structure:
   }},
   "marketIntelligence": {{
     "trendingTopicsThisWeek": [
-      {{"topic": "", "source": "", "why_it_matters": ""}}
+      {{"topic": "", "source": "", "why_it_matters": "", "url": ""}}
     ],
     "audiencePainPoints": [
-      {{"pain": "", "source": "", "how_to_address": ""}}
+      {{"pain": "", "source": "", "how_to_address": "", "url": ""}}
     ],
     "competitorGaps": [
-      {{"gap": "", "opportunity": "", "example_angle": ""}}
+      {{"gap": "", "opportunity": "", "example_angle": "", "url": ""}}
     ],
     "newsHooks": [
-      {{"headline": "", "relevance": "", "post_angle": ""}}
+      {{"headline": "", "relevance": "", "post_angle": "", "url": ""}}
     ]
   }},
   "strategy": {{
@@ -546,6 +671,7 @@ Return ONLY valid JSON (no markdown, no commentary) in exactly this structure:
 }}
 
 CRITICAL REQUIREMENTS:
+- Be CONCISE. Keep all text fields short (under 15 words per field). The JSON must fit within 8000 tokens.
 - sevenDayPlan MUST have exactly 7 entries (Monday through Sunday)
 - Every sevenDayPlan entry MUST reference actual news or trends from the research data
 - profileScore must be 0-100, brutally honest
@@ -555,7 +681,9 @@ CRITICAL REQUIREMENTS:
 - sixMonthMilestones must have exactly 3 items
 - agentResearchLog will be filled in by the system, leave it as empty array []
 - All text must use London voice: direct, cheeky, first-person from agent perspective
-- Provide real, specific advice based on the actual research data gathered"""
+- Provide real, specific advice based on the actual research data gathered
+- NEVER use em dashes (the character -) in any text. Use commas, colons, or plain hyphens instead.
+- For every item in trendingTopicsThisWeek, audiencePainPoints, competitorGaps and newsHooks you MUST copy the exact url from the research data. If no url exists leave it as empty string."""
 
         try:
             synth_msg = client.messages.create(
@@ -563,19 +691,29 @@ CRITICAL REQUIREMENTS:
                 max_tokens=8000,
                 messages=[{"role": "user", "content": synthesis_prompt}],
             )
-            raw = synth_msg.content[0].text.strip()
+            raw = _strip_dashes(synth_msg.content[0].text.strip())
             if raw.startswith("```"):
                 parts = raw.split("```")
                 raw = parts[1] if len(parts) > 1 else raw
                 if raw.startswith("json"):
                     raw = raw[4:]
                 raw = raw.strip()
-            result = json.loads(raw)
+            # If truncated mid-JSON, try to salvage by closing open structures
+            try:
+                result = json.loads(raw)
+            except json.JSONDecodeError:
+                # Count open braces/brackets and close them
+                open_braces   = raw.count('{') - raw.count('}')
+                open_brackets = raw.count('[') - raw.count(']')
+                # Remove trailing partial string/value
+                raw = raw.rstrip().rstrip(',')
+                raw += ']' * open_brackets + '}' * open_braces
+                result = json.loads(raw)
         except Exception as e:
             yield sse({"stage": "error", "message": f"Synthesis failed: {e}"})
             return
 
-        result["agentResearchLog"] = research_log
+        result["agentResearchLog"] = []
 
         yield sse({
             "stage": "complete",

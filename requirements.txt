@@ -7,3 +7,5 @@ pytrends
 requests
 httpx
 slowapi
+gspread
+google-auth

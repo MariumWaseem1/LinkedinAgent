@@ -1,0 +1,23 @@
+{
+  "manifest_version": 3,
+  "name": "Linkwise by REV3",
+  "version": "1.0.0",
+  "description": "Analyse your LinkedIn profile and get a complete personal brand strategy powered by live market intelligence.",
+  "permissions": [
+    "activeTab",
+    "scripting",
+    "storage"
+  ],
+  "host_permissions": [
+    "https://www.linkedin.com/*",
+    "https://linkedinagent.rev3.uk/*"
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  }
+}
